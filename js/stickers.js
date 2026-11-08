@@ -56,6 +56,7 @@ window.STICKERS = (function () {
   ];
 
   const pesos = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+  const precioTexto = (n, moneda) => (moneda === 'USD' ? 'US$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR') : pesos(n));
 
   /* ---------- utilidades de dibujo ---------- */
   function fuente(peso, px, familia) { return peso + ' ' + Math.round(px) + 'px ' + familia; }
@@ -387,7 +388,8 @@ window.STICKERS = (function () {
     // 1) Foto (original, retrato o recortada sobre un diseño)
     ctx.drawImage(capaBase(datos, op, W, H, u), 0, 0);
 
-    const precio = pesos(datos.precio);
+    const precio = precioTexto(datos.precio, datos.moneda);
+    const detalle = String(datos.detalle || '');
     const codigo = datos.codigo ? 'Cód. ' + datos.codigo : '';
     const nombre = fuenteNombre.mayus ? String(datos.nombre || '').toUpperCase() : String(datos.nombre || '');
     const familiaN = fuenteNombre.familia + ', ' + DISPLAY;
@@ -415,7 +417,8 @@ window.STICKERS = (function () {
       ctx.font = fuente(fuenteNombre.peso, pxN, familiaN);
       const ls = nombre ? lineas(ctx, nombre, W - mx * 2, 2) : [];
       const pxP = ajustar(ctx, precio, 800, DISPLAY, W - mx * 2, 150 * u * escala('precio'));
-      const altoBanda = myAba + pxP * 1.05 + ls.length * pxN * 1.12 + (codigo ? 50 * u : 0) + 70 * u;
+      const pxD = Math.round(pxN * 0.62);
+      const altoBanda = myAba + pxP * 1.05 + ls.length * pxN * 1.12 + (detalle ? pxD * 1.3 : 0) + (codigo ? 50 * u : 0) + 70 * u;
       const g = ctx.createLinearGradient(0, H - altoBanda - 80 * u, 0, H);
       g.addColorStop(0, 'rgba(10,10,20,0)'); g.addColorStop(0.3, 'rgba(10,10,20,.75)'); g.addColorStop(1, 'rgba(10,10,20,.92)');
       ctx.fillStyle = g; ctx.fillRect(0, H - altoBanda - 80 * u, W, altoBanda + 80 * u);
@@ -423,6 +426,7 @@ window.STICKERS = (function () {
       if (codigo) { ctx.font = fuente(700, 36 * u, CUERPO); ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillText(codigo, mx, y); y -= 50 * u; }
       ctx.font = fuente(800, pxP, DISPLAY); ctx.fillStyle = '#FFD23F'; ctx.fillText(precio, mx - 4 * u, y);
       y -= pxP * 0.95;
+      if (detalle) { ctx.font = fuente(700, pxD, CUERPO); ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillText(detalle, mx, y); y -= pxD * 1.3; }
       ctx.fillStyle = '#fff'; ctx.font = fuente(fuenteNombre.peso, pxN, familiaN);
       for (let i = ls.length - 1; i >= 0; i--) { ctx.fillText(ls[i], mx, y); y -= pxN * 1.12; }
       if (marca) dibujarMarca(ctx, op, marca, pMarca.cx, pMarca.cy, u);
@@ -445,8 +449,11 @@ window.STICKERS = (function () {
       const anchoMax = W * (grande ? 0.9 : 0.82);
       const anchoTexto = Math.min(anchoMax, Math.max(W * 0.42, abajo && !capas.nombre ? W - mx * 2 - medio * 2 - 20 * u : anchoMax)) - px * 1.2;
       const ls = lineas(ctx, nombre, Math.max(px * 3, anchoTexto), grande ? 3 : 2);
-      const altoCaja = ls.length * px * 1.1 + px * 0.95;
-      const anchoCaja = Math.max.apply(null, ls.map((l) => ctx.measureText(l).width)) + px * 1.2;
+      const pxD = Math.round(px * 0.66);
+      let anchoTextos = Math.max.apply(null, ls.map((l) => ctx.measureText(l).width));
+      if (detalle) { ctx.font = fuente(700, pxD, CUERPO); anchoTextos = Math.max(anchoTextos, ctx.measureText(detalle).width); ctx.font = fuente(fuenteNombre.peso, px, familiaN); }
+      const altoCaja = ls.length * px * 1.1 + px * 0.95 + (detalle ? pxD * 1.25 : 0);
+      const anchoCaja = anchoTextos + px * 1.2;
       const xFab = abajo && izquierda ? W - mx - anchoCaja / 2 : mx + anchoCaja / 2;
       // si el nombre es tan ancho que choca con el sticker, va arriba del precio
       const choca = abajo && anchoCaja > W - mx * 2 - medio * 2;
@@ -458,6 +465,7 @@ window.STICKERS = (function () {
       ctx.font = fuente(fuenteNombre.peso, px, familiaN);
       ctx.fillStyle = TINTA;
       ls.forEach((l, i) => ctx.fillText(l, x + px * 0.6, y + px * 0.42 + px * (i + 1) * 1.04));
+      if (detalle) { ctx.font = fuente(700, pxD, CUERPO); ctx.fillStyle = 'rgba(23,23,29,.68)'; ctx.fillText(detalle, x + px * 0.6, y + px * 0.42 + px * ls.length * 1.04 + pxD * 1.25); }
     }
 
     if (marca) dibujarMarca(ctx, op, marca, pMarca.cx, pMarca.cy, u);
@@ -529,5 +537,5 @@ window.STICKERS = (function () {
     return fuentesListas;
   }
 
-  return { ESTILOS: ESTILOS, POSICIONES: POSICIONES, LETRAS: LETRAS, FONDOS: FONDOS, componer: componer, tamanoSalida: tamanoSalida, miniatura: miniatura, miniaturaFondo: miniaturaFondo, aBlob: aBlob, prepararFuentes: prepararFuentes, pesos: pesos };
+  return { ESTILOS: ESTILOS, POSICIONES: POSICIONES, LETRAS: LETRAS, FONDOS: FONDOS, componer: componer, tamanoSalida: tamanoSalida, miniatura: miniatura, miniaturaFondo: miniaturaFondo, aBlob: aBlob, prepararFuentes: prepararFuentes, pesos: pesos, precioTexto: precioTexto };
 })();

@@ -31,6 +31,37 @@
   /* ---------------- Utilidades ---------------- */
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const pesos = S.pesos;
+  const precioDe = (p) => S.precioTexto(p.precio, p.moneda);
+  const MAX_FOTOS = 20;
+  const COMBUSTIBLES = ['Nafta', 'Diésel', 'GNC', 'Nafta y GNC', 'Híbrido', 'Eléctrico'];
+  const CAJAS = ['Manual', 'Automática'];
+
+  function esVehiculo(p) { return (p.rubroManual && p.rubro ? p.rubro : window.RUBROS.detectar(p.nombre)) === 'vehiculos'; }
+  // "2019 · 85.000 km · Diésel · Manual"
+  function detalleAuto(p, corto) {
+    const a = p.auto || {};
+    if (!esVehiculo(p)) return '';
+    const km = a.km !== undefined && a.km !== '' && a.km !== null ? Number(a.km).toLocaleString('es-AR') + ' km' : '';
+    return [a.anio, km].concat(corto ? [] : [a.combustible, a.caja]).filter(Boolean).join(' · ');
+  }
+  function extrasAuto(p) {
+    const a = p.auto || {};
+    if (!esVehiculo(p)) return [];
+    return [a.financiacion ? 'Financiación' : '', a.permuta ? 'Acepta permuta' : ''].filter(Boolean);
+  }
+  function cantidadFotos(p) { return 1 + ((p.fotos && p.fotos.length) || 0); }
+  // Total del pedido separado por moneda: "$ 25.000 + US$ 1.200"
+  function totalTexto(lineas) {
+    const t = {};
+    lineas.forEach((l) => { const m = l.p.moneda === 'USD' ? 'USD' : 'ARS'; t[m] = (t[m] || 0) + l.p.precio * l.n; });
+    const partes = ['ARS', 'USD'].filter((m) => t[m] !== undefined).map((m) => S.precioTexto(t[m], m));
+    return partes.length ? partes.join(' + ') : pesos(0);
+  }
+  function lineasPedido() {
+    const ps = estado.productos;
+    return Object.keys(estado.pedido).map((id) => ({ p: ps.find((x) => x.id === id), n: estado.pedido[id] })).filter((l) => l.p);
+  }
+  const ICONO_FOTOS = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></svg>';
   const normalizar = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
 
   const local = {
@@ -164,7 +195,7 @@
       const r = rubroDe(p);
       if (f.rubro !== 'todos' && r !== f.rubro) return false;
       if (!palabras.length) return true;
-      const texto = RUBROS.normalizar([p.nombre, RUBROS.nombreDe(r), p.codigo, p.precio, pesos(p.precio)].join(' '));
+      const texto = RUBROS.normalizar([p.nombre, RUBROS.nombreDe(r), p.codigo, p.precio, precioDe(p), detalleAuto(p)].concat(extrasAuto(p)).join(' '));
       return palabras.every((w) => texto.indexOf(w) >= 0);
     });
   }
@@ -203,8 +234,9 @@
     if (!ps.length) return sinResultados();
     return '<div class="grilla">' + ps.map((p) =>
       '<div class="item">' +
-      '<button class="miniatura" data-accion="abrir" data-id="' + esc(p.id) + '" aria-label="' + esc('Editar ' + p.nombre + ', ' + pesos(p.precio)) + '">' +
-      '<img src="' + p.foto + '" alt="" loading="lazy"><span class="precio-chip">' + esc(pesos(p.precio)) + '</span>' +
+      '<button class="miniatura" data-accion="abrir" data-id="' + esc(p.id) + '" aria-label="' + esc('Editar ' + p.nombre + ', ' + precioDe(p) + (cantidadFotos(p) > 1 ? ', ' + cantidadFotos(p) + ' fotos' : '')) + '">' +
+      '<img src="' + p.foto + '" alt="" loading="lazy"><span class="precio-chip">' + esc(precioDe(p)) + '</span>' +
+      (cantidadFotos(p) > 1 ? '<span class="fotos-chip">' + ICONO_FOTOS + cantidadFotos(p) + '</span>' : '') +
       '<span class="mini-nombre">' + esc(p.nombre) + '<small>' + esc(RUBROS.nombreDe(rubroDe(p))) + '</small></span></button>' +
       '<button class="borrar-mini" data-accion="pedir-borrar" data-id="' + esc(p.id) + '" aria-label="' + esc('Eliminar ' + p.nombre) + '">' + ICONO_TACHO + '</button>' +
       '</div>').join('') + '</div>';
@@ -248,6 +280,9 @@
 
   async function abrirEditor(p) {
     estado.editor = Object.assign({ fondo: 'desenfocado', letra: 'moderna', capas: {} }, p);
+    estado.editor.fotos = (p.fotos || []).slice();
+    estado.editor.auto = Object.assign({}, p.auto || {});
+    estado.editor.moneda = p.moneda === 'USD' ? 'USD' : 'ARS';
     estado.editor.herramienta = (p.nombre && Number(p.precio) > 0) ? null : 'datos';
     estado.editor.firma = firmaEditor(estado.editor);
     estado.editor.capas = JSON.parse(JSON.stringify(p.capas || {}));
@@ -260,16 +295,18 @@
   /* ================= Editor ================= */
   const HERRAMIENTAS = [
     ['datos', 'Texto', '<path d="M5 7V4h14v3M12 4v16M9 20h6"/>'],
+    ['fotos', 'Fotos', '<rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/><path d="m3 16 4-4 4 4"/>'],
     ['sticker', 'Sticker', '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.6"/>'],
     ['fondo', 'Fondo', '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>'],
     ['letra', 'Letra', '<path d="M2.5 19 8 5l5.5 14M4.6 14h6.8"/><circle cx="18" cy="16" r="3"/><path d="M21 12.5V19"/>'],
     ['mas', 'Más', '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>']
   ];
-  const TITULO_PANEL = { datos: 'Nombre, precio y rubro', sticker: 'Sticker del precio', fondo: 'Fondo de la foto', letra: 'Letra del nombre', mas: 'Nombre del negocio y más' };
+  const TITULO_PANEL = { fotos: 'Fotos del producto', datos: 'Nombre, precio y rubro', sticker: 'Sticker del precio', fondo: 'Fondo de la foto', letra: 'Letra del nombre', mas: 'Nombre del negocio y más' };
 
   // Para saber si quedaron cambios sin guardar
   function firmaEditor(e) {
-    return JSON.stringify([e.nombre || '', Number(e.precio) || 0, e.rubroManual ? e.rubro : '', e.estilo, e.fondo, e.letra, e.modoFondo, e.capas || {}]);
+    return JSON.stringify([e.nombre || '', Number(e.precio) || 0, e.rubroManual ? e.rubro : '', e.estilo, e.fondo, e.letra, e.modoFondo, e.capas || {},
+      e.moneda || 'ARS', e.auto || {}, (e.foto || '').length, (e.fotos || []).map((f) => f.length + f.slice(-16))]);
   }
 
   function vistaEditor() {
@@ -286,7 +323,8 @@
       '<span class="ed-ayuda" id="ed-ayuda">Tocá el precio o el nombre para cambiarlos. Arrastralos para moverlos.</span></div></div>' +
       '<nav class="ed-herramientas" aria-label="Herramientas">' + HERRAMIENTAS.map((t) =>
         '<button data-accion="herramienta" data-h="' + t[0] + '" aria-pressed="' + (h === t[0]) + '">' +
-        '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + t[2] + '</svg><span>' + t[1] + '</span></button>').join('') +
+        '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + t[2] + '</svg><span>' + t[1] + '</span>' +
+        (t[0] === 'fotos' ? '<b class="cuenta-fotos" id="cuenta-fotos">' + (1 + e.fotos.length) + '</b>' : '') + '</button>').join('') +
         '<button class="ed-reacomodar" data-accion="reacomodar" aria-label="Reacomodar: volver precio, nombre y logo a su lugar y tamaño">' +
         '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg><span>Reacomodar</span></button>' +
         '</nav>' +
@@ -338,10 +376,74 @@
     const e = estado.editor;
     return '<div class="campos">' +
       '<div class="campo"><label for="nombre">Nombre del producto</label><input id="nombre" data-campo="nombre" value="' + esc(e.nombre) + '" placeholder="Ej: Vasos de vidrio x 6" autocomplete="off" enterkeyhint="next"></div>' +
-      '<div class="campo"><label for="precio">Precio</label><div class="con-signo"><span>$</span><input id="precio" data-campo="precio" inputmode="numeric" value="' + esc(e.precio ? Number(e.precio).toLocaleString('es-AR') : '') + '" placeholder="5.000" autocomplete="off" enterkeyhint="done"></div></div>' +
+      '<div class="campo"><label for="precio">Precio</label><div class="con-signo con-moneda"><select id="moneda" data-campo="moneda" aria-label="Moneda"><option value="ARS"' + (e.moneda !== 'USD' ? ' selected' : '') + '>$</option><option value="USD"' + (e.moneda === 'USD' ? ' selected' : '') + '>US$</option></select><input id="precio" data-campo="precio" inputmode="numeric" value="' + esc(e.precio ? Number(e.precio).toLocaleString('es-AR') : '') + '" placeholder="5.000" autocomplete="off" enterkeyhint="done"></div></div>' +
       '<div class="campo campo-rubro"><label for="rubro">Rubro <span class="detalle" id="rubro-ayuda">' + (e.rubroManual ? '(elegido por vos)' : '(lo detecta la app)') + '</span></label>' +
       '<select id="rubro" data-campo="rubro">' + RUBROS.TODOS.map((r) => '<option value="' + r.id + '"' + (r.id === rubroEditor() ? ' selected' : '') + '>' + esc(r.nombre) + '</option>').join('') + '</select></div>' +
-      '</div>';
+      '</div>' + camposAuto();
+  }
+
+  function camposAuto() {
+    const a = estado.editor.auto || {};
+    const sel = (k, ops, titulo) => '<div class="campo"><label for="auto-' + k + '">' + titulo + '</label><select id="auto-' + k + '" data-auto="' + k + '"><option value="">—</option>' +
+      ops.map((o) => '<option' + (a[k] === o ? ' selected' : '') + '>' + o + '</option>').join('') + '</select></div>';
+    return '<fieldset class="campos-auto" id="campos-auto"' + (rubroEditor() === 'vehiculos' ? '' : ' hidden') + '><legend>Datos del vehículo</legend><div class="campos">' +
+      '<div class="campo"><label for="auto-anio">Año</label><input id="auto-anio" data-auto="anio" inputmode="numeric" maxlength="4" placeholder="2019" value="' + esc(a.anio || '') + '" autocomplete="off"></div>' +
+      '<div class="campo"><label for="auto-km">Kilómetros</label><input id="auto-km" data-auto="km" inputmode="numeric" placeholder="85.000" value="' + esc(a.km !== undefined && a.km !== '' ? Number(a.km).toLocaleString('es-AR') : '') + '" autocomplete="off"></div>' +
+      sel('combustible', COMBUSTIBLES, 'Combustible') + sel('caja', CAJAS, 'Caja') + '</div>' +
+      '<label class="interruptor"><input type="checkbox" data-auto="financiacion"' + (a.financiacion ? ' checked' : '') + '><span>Financiación</span></label>' +
+      '<label class="interruptor"><input type="checkbox" data-auto="permuta"' + (a.permuta ? ' checked' : '') + '><span>Acepta permuta</span></label>' +
+      '</fieldset>';
+  }
+
+  function panelFotos() {
+    const e = estado.editor;
+    const total = 1 + e.fotos.length;
+    return '<p class="detalle">La <b>principal</b> lleva el precio y el diseño. Las demás se comparten tal cual y se ven en tu catálogo.</p>' +
+      '<div class="tira-fotos">' +
+      '<figure class="foto-item principal"><img src="' + e.foto + '" alt="Foto principal"><figcaption>Principal</figcaption></figure>' +
+      e.fotos.map((f, i) => '<figure class="foto-item"><img src="' + f + '" alt="' + esc('Foto ' + (i + 2)) + '">' +
+        '<button class="foto-btn" data-accion="foto-principal" data-i="' + i + '">Hacer principal</button>' +
+        '<button class="foto-quitar" data-accion="foto-quitar" data-i="' + i + '" aria-label="' + esc('Quitar foto ' + (i + 2)) + '">×</button></figure>').join('') +
+      (total < MAX_FOTOS ? '<div class="foto-agregar">' +
+        '<label class="btn btn-chico btn-marca" for="mas-fotos-galeria">+ Agregar fotos</label><input class="oculto" id="mas-fotos-galeria" type="file" accept="image/*" multiple data-accion="mas-fotos">' +
+        '<label class="btn btn-chico" for="mas-fotos-camara">Sacar foto</label><input class="oculto" id="mas-fotos-camara" type="file" accept="image/*" capture="environment" data-accion="mas-fotos">' +
+        '</div>' : '') +
+      '</div><p class="detalle">' + total + ' de ' + MAX_FOTOS + ' fotos.</p>';
+  }
+
+  async function agregarFotos(archivos) {
+    const e = estado.editor;
+    const lugar = MAX_FOTOS - 1 - e.fotos.length;
+    const lista = Array.from(archivos).slice(0, Math.max(0, lugar));
+    if (!lista.length) { avisar('Llegaste al máximo de ' + MAX_FOTOS + ' fotos'); return; }
+    avisar(lista.length > 1 ? 'Agregando ' + lista.length + ' fotos…' : 'Agregando la foto…');
+    for (const f of lista) { try { e.fotos.push(await prepararFoto(f)); } catch (err) { /* se saltea la que no abre */ } }
+    if (archivos.length > lista.length) avisar('Se agregaron ' + lista.length + '. El máximo es ' + MAX_FOTOS + ' fotos.');
+    else avisar(lista.length > 1 ? lista.length + ' fotos agregadas' : 'Foto agregada');
+    refrescarFotos();
+  }
+
+  function refrescarFotos() {
+    const e = estado.editor;
+    const c = document.getElementById('cuenta-fotos'); if (c) c.textContent = 1 + e.fotos.length;
+    if (e.herramienta === 'fotos') refrescarPanel();
+  }
+
+  async function hacerPrincipal(i) {
+    const e = estado.editor;
+    const nueva = e.fotos[i];
+    e.fotos[i] = e.foto;
+    e.foto = nueva;
+    e.img = await cargarImagen(nueva);
+    // el recorte era de la otra foto
+    const teniaFondo = e.modoFondo !== 'original';
+    e.recorte = null; e.imgRecorte = null; e.recorteCaja = null; e.modoFondo = 'original';
+    const v = app.querySelector('.editor2 .vista-previa');
+    if (v) { const st = proporcion(e).split(';'); v.style.aspectRatio = st[0].split(':')[1]; v.style.setProperty('--r', st[1].split(':')[1]); }
+    ajustarVista();
+    dibujarVista();
+    refrescarFotos();
+    avisar(teniaFondo ? 'Nueva foto principal. Volvé a elegir el fondo en "Fondo".' : 'Nueva foto principal');
   }
 
   function panelMas() {
@@ -375,6 +477,7 @@
   function panelOpciones() {
     const e = estado.editor;
     if (e.herramienta === 'datos') return campoDatos();
+    if (e.herramienta === 'fotos') return panelFotos();
     if (e.herramienta === 'mas') return panelMas();
     if (e.herramienta === 'fondo') {
       const modos = [['original', 'Foto original'], ['retrato', 'Desenfocar fondo'], ['diseno', 'Quitar fondo']];
@@ -583,7 +686,8 @@
 
   function datosEditor() {
     const e = estado.editor;
-    return { foto: e.img, recorte: e.imgRecorte, recorteCaja: e.recorteCaja, nombre: e.nombre || 'Nombre del producto', precio: Number(e.precio) || 0, codigo: ajustes.mostrarCodigo ? e.codigo : '' };
+    return { foto: e.img, recorte: e.imgRecorte, recorteCaja: e.recorteCaja, nombre: e.nombre || 'Nombre del producto', precio: Number(e.precio) || 0, codigo: ajustes.mostrarCodigo ? e.codigo : '',
+      moneda: e.moneda, detalle: detalleAuto({ nombre: e.nombre, rubro: e.rubro, rubroManual: e.rubroManual, auto: e.auto }, true) };
   }
   function opcionesEditor() {
     const e = estado.editor;
@@ -628,7 +732,9 @@
       recorte: e.recorte || null, recorteCaja: e.recorteCaja || null,
       modoFondo: e.modoFondo || 'original', recortado: e.modoFondo === 'diseno',
       capas: e.capas || {},
-      rubro: rubroEditor(), rubroManual: !!e.rubroManual
+      rubro: rubroEditor(), rubroManual: !!e.rubroManual,
+      fotos: (e.fotos || []).slice(), moneda: e.moneda === 'USD' ? 'USD' : 'ARS',
+      auto: rubroEditor() === 'vehiculos' ? Object.assign({}, e.auto || {}) : (e.auto || {})
     };
     await ALMACEN.guardar(p);
     e.id = p.id; e.fecha = p.fecha; e.firma = firmaEditor(e);
@@ -639,15 +745,18 @@
 
   /* ================= Compartir red por red ================= */
   function textoRed(p, red) {
-    const precio = pesos(p.precio);
+    const precio = precioDe(p);
     const cod = ajustes.mostrarCodigo && p.codigo ? ' (cód. ' + p.codigo + ')' : '';
+    const det = detalleAuto(p);
+    const extra = extrasAuto(p).join(' · ');
+    const lineaAuto = det || extra ? '\n' + [det, extra].filter(Boolean).join(' · ') : '';
     const wa = ajustes.whatsapp ? 'wa.me/' + ajustes.whatsapp : 'WhatsApp';
     const tags = ['#' + normalizar(ajustes.negocio).toLowerCase().replace(/[^a-z0-9]/g, ''), '#ventas', '#ofertas', '#' + (normalizar(p.nombre).toLowerCase().split(/\s+/)[0] || 'productos').replace(/[^a-z0-9]/g, '')].join(' ');
-    if (red === 'estado') return p.nombre + ' ' + precio + cod + '. Pedí respondiendo este estado.';
-    if (red === 'marketplace') return 'Título: ' + p.nombre + '\nPrecio: ' + precio + '\nDescripción: ' + p.nombre + ' a ' + precio + cod + '. ' + ajustes.negocio + '. Consultas y pedidos por mensaje.';
-    if (red === 'facebook') return p.nombre + '\n' + precio + cod + '\n\nPedidos por ' + wa + '\n' + ajustes.negocio;
-    if (red === 'tiktok') return p.nombre + ' a ' + precio + cod + '. Pedidos por ' + wa + ' ' + tags;
-    return p.nombre + '\n' + precio + cod + '\n\nPedidos por ' + wa + '\n' + ajustes.negocio + '\n\n' + tags;
+    if (red === 'estado') return p.nombre + ' ' + precio + cod + (det ? ' · ' + det : '') + (extra ? ' · ' + extra : '') + '. Pedí respondiendo este estado.';
+    if (red === 'marketplace') return 'Título: ' + p.nombre + (det ? ' ' + det : '') + '\nPrecio: ' + precio + '\nDescripción: ' + p.nombre + ' a ' + precio + cod + '.' + (det ? ' ' + det + '.' : '') + (extra ? ' ' + extra + '.' : '') + ' ' + ajustes.negocio + '. Consultas y pedidos por mensaje.';
+    if (red === 'facebook') return p.nombre + lineaAuto + '\n' + precio + cod + '\n\nPedidos por ' + wa + '\n' + ajustes.negocio;
+    if (red === 'tiktok') return p.nombre + (det ? ' ' + det : '') + ' a ' + precio + cod + '. Pedidos por ' + wa + ' ' + tags;
+    return p.nombre + lineaAuto + '\n' + precio + cod + '\n\nPedidos por ' + wa + '\n' + ajustes.negocio + '\n\n' + tags;
   }
 
   function faltanDatos() {
@@ -673,7 +782,7 @@
     try { p = await guardarEditor(); } catch (err) { avisar('No se pudo guardar. Probá de nuevo.'); return; }
     // La imagen se arma antes, así "Compartir" abre al instante
     const imagen = S.aBlob(S.componer(datosEditor(), opcionesEditor()));
-    abrirCapa({ tipo: 'redes', producto: p, imagen: imagen, elegidas: ajustes.redes.slice(), paso: -1 });
+    abrirCapa({ tipo: 'redes', producto: p, imagen: imagen, elegidas: ajustes.redes.slice(), paso: -1, todas: true });
   }
 
   function abrirCapa(datos) {
@@ -694,9 +803,10 @@
     if (!c) return;
     let titulo, cuerpo, pie;
     if (c.tipo === 'pedido') { const h = hojaPedido(); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
+    else if (c.tipo === 'detalle') { const h = hojaDetalle(); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
     else if (c.tipo === 'borrar') {
       titulo = '¿Eliminar este producto?';
-      cuerpo = '<div class="confirmar-borrar"><img src="' + c.producto.foto + '" alt=""><div><b>' + esc(c.producto.nombre || 'Sin nombre') + '</b><span>' + esc(pesos(c.producto.precio)) + '</span></div></div>' +
+      cuerpo = '<div class="confirmar-borrar"><img src="' + c.producto.foto + '" alt=""><div><b>' + esc(c.producto.nombre || 'Sin nombre') + '</b><span>' + esc(precioDe(c.producto)) + '</span></div></div>' +
         '<p class="detalle">Se borra de "Tus productos" y de tu catálogo. No se puede deshacer.</p>';
       pie = '<button class="btn btn-peligro-lleno btn-ancho" data-accion="confirmar-borrar">Sí, eliminar</button>' +
         '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Cancelar</button>';
@@ -710,15 +820,18 @@
     }
     else if (c.paso < 0) {
       titulo = '¿Dónde lo querés subir?';
+      const otras = (c.producto.fotos || []).length;
       cuerpo = '<div class="redes">' + REDES.map((r) =>
         '<label class="red"><input type="checkbox" data-accion="red" value="' + r.id + '"' + (c.elegidas.indexOf(r.id) >= 0 ? ' checked' : '') + '><span>' + esc(r.nombre) + '</span></label>').join('') + '</div>' +
+        (otras ? '<label class="interruptor todas-fotos"><input type="checkbox" data-accion="todas-fotos"' + (c.todas ? ' checked' : '') + '><span>Compartir también ' + (otras === 1 ? 'la otra foto' : 'las otras ' + otras + ' fotos') + '</span></label>' : '') +
         '<p class="nota">La app te va a llevar red por red con la imagen y el texto listos.</p>';
       const n = c.elegidas.length;
       pie = '<button class="btn btn-marca btn-ancho" data-accion="empezar"' + (n ? '' : ' disabled') + '>' + (n ? 'Empezar (' + n + (n === 1 ? ' red)' : ' redes)') : 'Elegí al menos una red') + '</button>';
     } else if (c.paso < c.cola.length) {
       const r = REDES.find((x) => x.id === c.cola[c.paso]);
       titulo = (c.paso + 1) + ' de ' + c.cola.length + ' · ' + r.nombre;
-      cuerpo = '<div class="paso-red"><img id="img-red" alt="Imagen para ' + esc(r.nombre) + '">' +
+      const otras = c.todas ? (c.producto.fotos || []).length : 0;
+      cuerpo = '<div class="paso-red"><div class="img-red-caja"><img id="img-red" alt="Imagen para ' + esc(r.nombre) + '">' + (otras ? '<span class="fotos-chip">+' + otras + ' fotos</span>' : '') + '</div>' +
         '<p>' + esc(r.ayuda) + '</p>' +
         (window.claude && !puedeCompartirPrueba() ? '<p class="nota aviso-claude">Dentro de Claude la imagen se descarga. Con la app en tu propio link se abre el menú Compartir del celular.</p>' : '') +
         '<pre class="texto-red">' + esc(textoRed(c.producto, r.id)) + '</pre></div>';
@@ -738,6 +851,11 @@
       '<div class="hoja-cab"><h2>' + esc(titulo) + '</h2><button class="cerrar" data-accion="cerrar" aria-label="Cerrar">×</button></div>' +
       '<div class="hoja-cuerpo">' + cuerpo + '</div><div class="hoja-pie">' + pie + '</div></section>';
 
+    if (c.tipo === 'detalle') {
+      const g = document.getElementById('galeria');
+      const n = document.getElementById('galeria-n');
+      if (g && n) g.addEventListener('scroll', () => { n.textContent = (Math.round(g.scrollLeft / g.clientWidth) + 1) + ' / ' + g.children.length; }, { passive: true });
+    }
     if (c.tipo === 'redes' && c.paso >= 0 && c.paso < c.cola.length) {
       c.imagen.then((b) => {
         const img = document.getElementById('img-red');
@@ -750,6 +868,9 @@
     try { return puedeCompartir(new File([new Blob(['x'], { type: 'image/jpeg' })], 'x.jpg', { type: 'image/jpeg' })); } catch (e) { return false; }
   }
 
+  function puedeCompartirVarios(archivos) {
+    try { return !!(navigator.canShare && navigator.canShare({ files: archivos })); } catch (e) { return false; }
+  }
   function puedeCompartir(archivo) {
     try { return !!(navigator.canShare && navigator.canShare({ files: [archivo] })); } catch (e) { return false; }
   }
@@ -769,10 +890,17 @@
     const blob = await c.imagen;
     const nombre = (normalizar(c.producto.nombre).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'producto') + '.jpg';
     const archivo = new File([blob], nombre, { type: 'image/jpeg' });
+    const archivos = [archivo];
+    if (c.todas && c.producto.fotos && c.producto.fotos.length) {
+      for (let i = 0; i < c.producto.fotos.length; i++) {
+        const b = await (await fetch(c.producto.fotos[i])).blob();
+        archivos.push(new File([b], nombre.replace(/\.jpg$/, '-' + (i + 2) + '.jpg'), { type: 'image/jpeg' }));
+      }
+    }
 
-    if (puedeCompartir(archivo)) {
+    if (puedeCompartirVarios(archivos)) {
       try {
-        await navigator.share({ files: [archivo], text: texto });
+        await navigator.share({ files: archivos, text: texto });
         avanzar();
         return;
       } catch (e) {
@@ -781,14 +909,16 @@
     }
     const dl = await descargasClaude();
     if (dl) {
-      try { await dl.save({ filename: nombre, data: archivo }); avisar('Imagen descargada. El texto quedó copiado.'); avanzar(); }
+      try { for (const f of archivos) await dl.save({ filename: f.name, data: f }); avisar((archivos.length > 1 ? archivos.length + ' imágenes descargadas' : 'Imagen descargada') + '. El texto quedó copiado.'); avanzar(); }
       catch (e) { if (!e || e.code !== 'declined') avisar('No se pudo descargar la imagen.'); }
       return;
     }
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(archivo); a.download = nombre;
-    document.body.appendChild(a); a.click(); a.remove();
-    avisar('Imagen descargada. El texto quedó copiado.');
+    archivos.forEach((f) => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(f); a.download = f.name;
+      document.body.appendChild(a); a.click(); a.remove();
+    });
+    avisar((archivos.length > 1 ? archivos.length + ' imágenes descargadas' : 'Imagen descargada') + '. El texto quedó copiado.');
     avanzar();
   }
 
@@ -813,43 +943,66 @@
       '<div id="barra-pedido">' + barraPedido(cant, total) + '</div>';
   }
 
-  function barraPedido(cant, total) {
-    return cant ? '<div class="barra-abajo"><button class="btn btn-marca btn-ancho fila" data-accion="ver-pedido"><span>Ver pedido · ' + cant + '</span><span>' + esc(pesos(total)) + '</span></button></div>' : '';
+  function barraPedido() {
+    const ls = lineasPedido();
+    const cant = ls.reduce((a, l) => a + l.n, 0);
+    return cant ? '<div class="barra-abajo"><button class="btn btn-marca btn-ancho fila" data-accion="ver-pedido"><span>Ver pedido · ' + cant + '</span><span>' + esc(totalTexto(ls)) + '</span></button></div>' : '';
+  }
+
+  function botonCantidad(p) {
+    const n = estado.pedido[p.id] || 0;
+    return n ? '<div class="paso-cant"><button data-accion="menos" data-id="' + esc(p.id) + '" aria-label="Restar">−</button><span>' + n + '</span><button data-accion="mas" data-id="' + esc(p.id) + '" aria-label="Sumar">+</button></div>'
+      : '<button class="btn btn-chico" data-accion="mas" data-id="' + esc(p.id) + '">Agregar</button>';
   }
 
   function grillaCatalogo() {
     const ps = filtrar(estado.productos);
     if (!ps.length) return estado.productos.length ? sinResultados() : '<p class="vacio">Todavía no hay productos.</p>';
     return '<div class="grilla catalogo">' + ps.map((p) => {
-      const n = estado.pedido[p.id] || 0;
-      return '<article class="prod"><div class="prod-foto"><img src="' + p.foto + '" alt="' + esc(p.nombre) + '" loading="lazy">' +
+      const det = detalleAuto(p, true);
+      const nf = cantidadFotos(p);
+      return '<article class="prod"><div class="prod-foto"><button class="ver-detalle" data-accion="ver-detalle" data-id="' + esc(p.id) + '" aria-label="' + esc('Ver ' + p.nombre + (nf > 1 ? ', ' + nf + ' fotos' : '')) + '"><img src="' + p.foto + '" alt="' + esc(p.nombre) + '" loading="lazy">' +
+        (nf > 1 ? '<span class="fotos-chip">' + ICONO_FOTOS + nf + '</span>' : '') + '</button>' +
         '<button class="borrar-mini" data-accion="pedir-borrar" data-id="' + esc(p.id) + '" aria-label="' + esc('Eliminar ' + p.nombre) + '">' + ICONO_TACHO + '</button></div>' +
-        '<div class="prod-info"><span class="prod-rubro">' + esc(RUBROS.nombreDe(rubroDe(p))) + '</span><span class="prod-nombre">' + esc(p.nombre) + '</span><span class="prod-precio">' + esc(pesos(p.precio)) + '</span>' +
-        (n ? '<div class="paso-cant"><button data-accion="menos" data-id="' + esc(p.id) + '" aria-label="Restar">−</button><span>' + n + '</span><button data-accion="mas" data-id="' + esc(p.id) + '" aria-label="Sumar">+</button></div>'
-          : '<button class="btn btn-chico" data-accion="mas" data-id="' + esc(p.id) + '">Agregar</button>') +
-        '</div></article>';
+        '<div class="prod-info"><span class="prod-rubro">' + esc(RUBROS.nombreDe(rubroDe(p))) + '</span><span class="prod-nombre">' + esc(p.nombre) + '</span>' +
+        (det ? '<span class="prod-detalle">' + esc(det) + '</span>' : '') +
+        '<span class="prod-precio">' + esc(precioDe(p)) + '</span>' +
+        '<span id="cant-' + esc(p.id) + '">' + botonCantidad(p) + '</span></div></article>';
     }).join('') + '</div>';
   }
 
   function refrescarCatalogo() {
-    const ps = estado.productos;
-    const total = Object.keys(estado.pedido).reduce((a, id) => { const p = ps.find((x) => x.id === id); return a + (p ? p.precio * estado.pedido[id] : 0); }, 0);
-    const cant = Object.values(estado.pedido).reduce((a, b) => a + b, 0);
     const g = document.getElementById('grilla-catalogo'); if (g) g.innerHTML = grillaCatalogo();
-    const b = document.getElementById('barra-pedido'); if (b) b.innerHTML = barraPedido(cant, total);
+    const b = document.getElementById('barra-pedido'); if (b) b.innerHTML = barraPedido();
+    if (estado.capa && estado.capa.tipo === 'detalle') { const c = document.getElementById('cant-detalle'); if (c) c.innerHTML = botonCantidad(estado.capa.producto); }
+  }
+
+  // Ficha del producto con todas sus fotos (lo que ve el cliente al tocar un producto)
+  function hojaDetalle() {
+    const p = estado.capa.producto;
+    const fotos = [p.foto].concat(p.fotos || []);
+    const a = p.auto || {};
+    const datos = esVehiculo(p) ? [['Año', a.anio], ['Kilómetros', a.km !== undefined && a.km !== '' ? Number(a.km).toLocaleString('es-AR') + ' km' : ''], ['Combustible', a.combustible], ['Caja', a.caja]].filter((d) => d[1]) : [];
+    const extras = extrasAuto(p);
+    return [p.nombre,
+      '<div class="galeria" id="galeria" tabindex="0" aria-label="Fotos de ' + esc(p.nombre) + '">' + fotos.map((f, i) => '<img src="' + f + '" alt="' + esc(p.nombre + ', foto ' + (i + 1) + ' de ' + fotos.length) + '"' + (i ? ' loading="lazy"' : '') + '>').join('') + '</div>' +
+      (fotos.length > 1 ? '<div class="galeria-pie"><span id="galeria-n">1 / ' + fotos.length + '</span><span class="detalle">Deslizá para ver más fotos</span></div>' : '') +
+      '<div class="ficha"><span class="ficha-precio">' + esc(precioDe(p)) + '</span>' +
+      (datos.length ? '<dl class="ficha-datos">' + datos.map((d) => '<div><dt>' + d[0] + '</dt><dd>' + esc(d[1]) + '</dd></div>').join('') + '</dl>' : '') +
+      (extras.length ? '<div class="ficha-extras">' + extras.map((x) => '<span>✓ ' + esc(x) + '</span>').join('') + '</div>' : '') + '</div>',
+      '<div id="cant-detalle" class="cant-detalle">' + botonCantidad(p) + '</div>'];
   }
 
   function hojaPedido() {
-    const ps = estado.productos;
-    const lineas = Object.keys(estado.pedido).map((id) => ({ p: ps.find((x) => x.id === id), n: estado.pedido[id] })).filter((l) => l.p);
-    const total = lineas.reduce((a, l) => a + l.p.precio * l.n, 0);
+    const lineas = lineasPedido();
+    const total = totalTexto(lineas);
     const c = estado.capa;
-    const texto = '*Pedido para ' + ajustes.negocio + '*\n\n' + lineas.map((l) => '• ' + l.n + ' x ' + l.p.nombre + ' (' + pesos(l.p.precio) + ') = ' + pesos(l.p.precio * l.n)).join('\n') +
-      '\n\n*Total: ' + pesos(total) + '*' + (c.nombre ? '\nA nombre de: ' + c.nombre : '');
+    const texto = '*Pedido para ' + ajustes.negocio + '*\n\n' + lineas.map((l) => '• ' + l.n + ' x ' + l.p.nombre + ' (' + precioDe(l.p) + ') = ' + S.precioTexto(l.p.precio * l.n, l.p.moneda)).join('\n') +
+      '\n\n*Total: ' + total + '*' + (c.nombre ? '\nA nombre de: ' + c.nombre : '');
     const link = 'https://wa.me/' + (ajustes.whatsapp || '') + '?text=' + encodeURIComponent(texto);
     return ['Tu pedido',
-      '<div class="lineas">' + lineas.map((l) => '<div class="linea"><span>' + l.n + ' × ' + esc(l.p.nombre) + '</span><b>' + esc(pesos(l.p.precio * l.n)) + '</b></div>').join('') +
-      '<div class="linea total"><span>Total</span><b>' + esc(pesos(total)) + '</b></div></div>' +
+      '<div class="lineas">' + lineas.map((l) => '<div class="linea"><span>' + l.n + ' × ' + esc(l.p.nombre) + '</span><b>' + esc(S.precioTexto(l.p.precio * l.n, l.p.moneda)) + '</b></div>').join('') +
+      '<div class="linea total"><span>Total</span><b>' + esc(total) + '</b></div></div>' +
       '<div class="campo"><label for="pedido-nombre">Tu nombre</label><input id="pedido-nombre" data-accion="pedido-nombre" value="' + esc(c.nombre || '') + '" autocomplete="name"></div>',
       '<a class="btn btn-wa btn-ancho" id="enviar-pedido" href="' + esc(link) + '" target="_blank" rel="noopener">Enviar pedido por WhatsApp</a>' +
       (ajustes.whatsapp ? '' : '<p class="nota">El negocio todavía no cargó su WhatsApp en Ajustes: vas a poder elegir a quién mandarlo.</p>')];
@@ -918,6 +1071,20 @@
       ocultarAviso();
     },
     guardar: () => { guardarSolo(); },
+    'foto-principal': (el) => hacerPrincipal(Number(el.dataset.i)),
+    'foto-quitar': (el) => {
+      const e = estado.editor;
+      const quitada = e.fotos.splice(Number(el.dataset.i), 1)[0];
+      e.fotoQuitada = { foto: quitada, i: Number(el.dataset.i) };
+      refrescarFotos();
+      avisar('Foto quitada', { texto: 'Deshacer', accion: 'deshacer-quitar-foto' });
+    },
+    'deshacer-quitar-foto': () => {
+      const e = estado.editor;
+      if (!e || !e.fotoQuitada) return;
+      e.fotos.splice(e.fotoQuitada.i, 0, e.fotoQuitada.foto); e.fotoQuitada = null;
+      refrescarFotos(); ocultarAviso();
+    },
     'salir-editor': (el, ev) => {
       const e = estado.editor;
       if (e && e.firma !== firmaEditor(e)) { ev.preventDefault(); abrirCapa({ tipo: 'salir' }); }
@@ -948,6 +1115,7 @@
     saltar: () => avanzar(),
     mas: (el) => { estado.pedido[el.dataset.id] = (estado.pedido[el.dataset.id] || 0) + 1; refrescarCatalogo(); },
     menos: (el) => { const n = (estado.pedido[el.dataset.id] || 0) - 1; if (n > 0) estado.pedido[el.dataset.id] = n; else delete estado.pedido[el.dataset.id]; refrescarCatalogo(); },
+    'ver-detalle': (el) => { const p = estado.productos.find((x) => x.id === el.dataset.id); if (p) abrirCapa({ tipo: 'detalle', producto: p }); },
     'rubro-filtro': (el) => { estado.filtro.rubro = el.dataset.rubro; refrescarListas(); },
     'limpiar-filtro': () => {
       estado.filtro = { q: '', rubro: 'todos' };
@@ -971,6 +1139,19 @@
   document.addEventListener('input', (ev) => {
     const el = ev.target;
     if (el.dataset.buscar) { estado.filtro.q = el.value; refrescarListas(); return; }
+    if (el.dataset.auto && estado.editor && el.tagName === 'INPUT' && el.type !== 'checkbox') {
+      const a = estado.editor.auto;
+      if (el.dataset.auto === 'km') {
+        const n = el.value.replace(/\D/g, '').slice(0, 7);
+        a.km = n ? Number(n) : '';
+        el.value = n ? Number(n).toLocaleString('es-AR') : '';
+      } else {
+        el.value = el.value.replace(/\D/g, '').slice(0, 4);
+        a.anio = el.value;
+      }
+      redibujarPronto(false);
+      return;
+    }
     if (el.dataset.tamano && estado.editor) {
       const k = el.dataset.tamano, e = estado.editor;
       e.capas[k] = Object.assign({}, (e.capasUsadas && e.capasUsadas[k]) || {}, e.capas[k] || {}, { escala: Number(el.value) / 100 });
@@ -983,6 +1164,7 @@
     if (el.dataset.campo === 'nombre' && e) {
       e.nombre = el.value; redibujarPronto(false);
       if (!e.rubroManual) { const sel = document.getElementById('rubro'); if (sel) sel.value = rubroEditor(); }
+      const ca = document.getElementById('campos-auto'); if (ca) ca.hidden = rubroEditor() !== 'vehiculos';
       app.querySelectorAll('.letra b').forEach((b) => { b.textContent = e.nombre || 'Mi producto'; });
     }
     if (el.dataset.campo === 'precio' && e) {
@@ -1009,10 +1191,20 @@
     if (el.dataset.campo === 'rubro' && estado.editor) {
       estado.editor.rubro = el.value; estado.editor.rubroManual = true;
       const a = document.getElementById('rubro-ayuda'); if (a) a.textContent = '(elegido por vos)';
+      const ca = document.getElementById('campos-auto'); if (ca) ca.hidden = el.value !== 'vehiculos';
+      dibujarVista();
       return;
     }
+    if (el.dataset.campo === 'moneda' && estado.editor) { estado.editor.moneda = el.value; dibujarVista(); return; }
+    if (el.dataset.auto && estado.editor && (el.tagName === 'SELECT' || el.type === 'checkbox')) {
+      estado.editor.auto[el.dataset.auto] = el.type === 'checkbox' ? el.checked : el.value;
+      dibujarVista();
+      return;
+    }
+    if (el.dataset.accion === 'mas-fotos' && el.files && el.files.length && estado.editor) { const fs = Array.from(el.files); el.value = ''; agregarFotos(fs); return; }
     if (el.dataset.accion === 'foto' && el.files && el.files[0]) { nuevaFoto(el.files[0]); el.value = ''; return; }
     if (el.dataset.accion === 'logo' && el.files && el.files[0]) { guardarLogo(el.files[0]).then(() => { if (vistaActual() === 'ajustes') app.innerHTML = vistaAjustes(); }); el.value = ''; return; }
+    if (el.dataset.accion === 'todas-fotos' && estado.capa) { estado.capa.todas = el.checked; return; }
     if (el.dataset.accion === 'red' && estado.capa) {
       const c = estado.capa;
       c.elegidas = c.elegidas.filter((id) => id !== el.value);

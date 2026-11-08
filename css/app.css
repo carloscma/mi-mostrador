@@ -347,3 +347,42 @@ body[data-vista="editor"] { overflow: hidden; overscroll-behavior: none; }
 .ed-herramientas button, .ed-reacomodar { width: 66px; }
 .ed-reacomodar span { font-size: 10px; letter-spacing: -.01em; white-space: nowrap; }
 .ed-herramientas button, .ed-reacomodar { padding-left: 0; padding-right: 0; grid-template-columns: minmax(0, 1fr); }
+
+/* ===== Etapa 5: varias fotos, moneda y datos de autos ===== */
+.fotos-chip { position: absolute; top: 6px; left: 6px; display: inline-flex; align-items: center; gap: 4px; background: rgb(10 10 16 / .72); color: #fff; font-weight: 800; font-size: 12px; padding: 3px 8px; border-radius: 999px; pointer-events: none; }
+.ver-detalle { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; position: relative; }
+.prod-detalle { font-size: 12px; font-weight: 600; color: var(--suave); }
+.cuenta-fotos { position: absolute; top: 2px; right: 8px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #FFD23F; color: #101116; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
+.ed-herramientas button { position: relative; }
+.con-moneda select { position: absolute; left: 4px; top: 4px; bottom: 4px; width: 62px; border: 0; border-radius: 10px; background: color-mix(in srgb, var(--texto) 7%, var(--superficie)); font: inherit; font-weight: 800; font-size: 15px; color: inherit; padding: 0 4px 0 8px; }
+.con-moneda input { padding-left: 74px; }
+.tira-fotos { display: grid; grid-auto-flow: column; grid-auto-columns: 104px; gap: 10px; overflow-x: auto; padding: 2px 2px 8px; align-items: start; }
+.foto-item { position: relative; margin: 0; display: grid; gap: 6px; }
+.foto-item img { width: 104px; height: 138px; object-fit: cover; border-radius: 12px; border: 2px solid var(--borde); display: block; }
+.foto-item.principal img { border-color: var(--marca); border-width: 3px; }
+.foto-item figcaption { position: absolute; left: 6px; top: 6px; background: var(--marca); color: #fff; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; }
+.foto-btn { border: 1.5px solid var(--borde); background: var(--superficie); color: inherit; border-radius: 10px; font: inherit; font-size: 12px; font-weight: 700; padding: 6px 4px; cursor: pointer; }
+.foto-quitar { position: absolute; top: 4px; right: 4px; width: 32px; height: 32px; border-radius: 50%; border: 0; background: rgb(10 10 16 / .7); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; }
+.foto-agregar { display: grid; gap: 8px; align-content: center; width: 104px; height: 138px; padding: 8px; border: 2px dashed var(--borde); border-radius: 12px; }
+.foto-agregar .btn { font-size: 13px; padding: 8px 6px; text-align: center; }
+.campos-auto { border: 1.5px solid var(--borde); border-radius: 14px; padding: 10px 12px 12px; margin: 12px 0 0; display: grid; gap: 10px; }
+.campos-auto[hidden] { display: none; }
+.campos-auto legend { font-weight: 800; font-size: 14px; padding: 0 6px; }
+.campos-auto select, .campos-auto input { width: 100%; min-height: 46px; border-radius: 12px; border: 1.5px solid var(--borde); background: var(--superficie); padding: 0 10px; font: inherit; font-size: 16px; color: inherit; box-sizing: border-box; }
+.todas-fotos { margin-top: 6px; }
+.img-red-caja { position: relative; }
+.galeria { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; border-radius: 16px; background: #101116; scrollbar-width: none; }
+.galeria::-webkit-scrollbar { display: none; }
+.galeria img { flex: 0 0 100%; width: 100%; max-height: 52dvh; object-fit: contain; scroll-snap-align: center; }
+.galeria-pie { display: flex; justify-content: space-between; align-items: center; margin-top: -6px; }
+.galeria-pie span:first-child { font-weight: 800; font-variant-numeric: tabular-nums; }
+.ficha { display: grid; gap: 10px; }
+.ficha-precio { font-family: var(--display); font-size: 28px; font-weight: 800; }
+.ficha-datos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.ficha-datos div { background: var(--fondo); border-radius: 12px; padding: 8px 10px; }
+.ficha-datos dt { font-size: 12px; color: var(--suave); font-weight: 600; }
+.ficha-datos dd { margin: 0; font-weight: 800; }
+.ficha-extras { display: flex; flex-wrap: wrap; gap: 8px; }
+.ficha-extras span { background: var(--marca-suave); color: var(--acento); font-weight: 700; font-size: 14px; padding: 5px 10px; border-radius: 999px; }
+.cant-detalle { display: flex; justify-content: center; }
+.cant-detalle .btn { width: 100%; min-height: 50px; font-size: 16px; }
