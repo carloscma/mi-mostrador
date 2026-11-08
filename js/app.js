@@ -240,7 +240,8 @@
   }
 
   async function abrirEditor(p) {
-    estado.editor = Object.assign({ pestana: 'sticker', fondo: 'desenfocado', letra: 'moderna', capas: {} }, p);
+    estado.editor = Object.assign({ fondo: 'desenfocado', letra: 'moderna', capas: {} }, p);
+    estado.editor.herramienta = (p.nombre && Number(p.precio) > 0) ? null : 'datos';
     estado.editor.capas = JSON.parse(JSON.stringify(p.capas || {}));
     if (!estado.editor.modoFondo) estado.editor.modoFondo = p.recortado ? 'diseno' : 'original';
     estado.editor.img = await cargarImagen(p.foto);
@@ -249,27 +250,91 @@
   }
 
   /* ================= Editor ================= */
+  const HERRAMIENTAS = [
+    ['datos', 'Texto', '<path d="M5 7V4h14v3M12 4v16M9 20h6"/>'],
+    ['sticker', 'Sticker', '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.6"/>'],
+    ['fondo', 'Fondo', '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>'],
+    ['letra', 'Letra', '<path d="M2.5 19 8 5l5.5 14M4.6 14h6.8"/><circle cx="18" cy="16" r="3"/><path d="M21 12.5V19"/>'],
+    ['mas', 'Más', '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>']
+  ];
+  const TITULO_PANEL = { datos: 'Nombre, precio y rubro', sticker: 'Sticker del precio', fondo: 'Fondo de la foto', letra: 'Letra del nombre', mas: 'Más opciones' };
+
   function vistaEditor() {
     const e = estado.editor;
-    const pestanas = [['sticker', 'Sticker'], ['fondo', 'Fondo'], ['letra', 'Letra']];
+    const h = e.herramienta;
+    return '<div class="editor2' + (h ? ' con-panel' : '') + '">' +
+      '<header class="ed-top"><a class="ed-volver" href="#inicio" aria-label="Volver al inicio"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>' +
+      '<b>' + (e.id ? 'Editar publicación' : 'Nueva publicación') + '</b>' +
+      '<button class="btn btn-marca ed-compartir" data-accion="compartir">Compartir</button></header>' +
+      '<div class="ed-escena" id="ed-escena">' +
+      '<div class="ed-foto"><div class="vista-previa" style="' + proporcion(e) + '"><canvas id="lienzo" aria-label="Vista previa. Tocá el precio o el nombre para cambiarlos; arrastralos para moverlos."></canvas>' +
+      '<span class="trabajando-aviso" aria-live="polite">Recortando el producto…<small>La primera vez puede tardar unos segundos</small></span>' +
+      '<span class="ed-ayuda" id="ed-ayuda">Tocá el precio o el nombre para cambiarlos. Arrastralos para moverlos.</span></div></div>' +
+      '<nav class="ed-herramientas" aria-label="Herramientas">' + HERRAMIENTAS.map((t) =>
+        '<button data-accion="herramienta" data-h="' + t[0] + '" aria-pressed="' + (h === t[0]) + '">' +
+        '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + t[2] + '</svg><span>' + t[1] + '</span></button>').join('') + '</nav>' +
+      '</div>' +
+      '<section class="ed-panel" id="ed-panel" aria-label="' + esc(h ? TITULO_PANEL[h] : '') + '"' + (h ? '' : ' hidden') + '>' +
+      '<div class="ed-panel-cab"><b id="ed-panel-titulo">' + esc(h ? TITULO_PANEL[h] : '') + '</b><button class="btn btn-chico" data-accion="cerrar-panel">Listo</button></div>' +
+      '<div id="panel-opciones">' + (h ? panelOpciones() : '') + '</div></section>' +
+      '</div>';
+  }
 
-    return '<header class="barra-top"><a class="btn-texto" href="#inicio">← Volver</a><b>' + (e.id ? 'Editar publicación' : 'Nueva publicación') + '</b>' +
-      '<span></span></header>' +
-      '<main class="pagina editor">' +
-      '<div class="ayuda-gestos"><span>Arrastrá el precio, el nombre o el logo con el dedo. Con dos dedos los agrandás.</span><button class="btn btn-chico" data-accion="reacomodar">Reacomodar</button></div>' +
-      '<div class="vista-previa" style="' + proporcion(e) + '"><canvas id="lienzo" aria-label="Vista previa de la imagen"></canvas><span class="trabajando-aviso" aria-live="polite">Recortando el producto…<small>La primera vez puede tardar unos segundos</small></span></div>' +
-      '<div class="campos">' +
+  // Abre (o cierra) el panel de una herramienta sin rehacer la foto
+  function abrirHerramienta(h, enfocar) {
+    const e = estado.editor;
+    e.herramienta = h || null;
+    const ed = app.querySelector('.editor2');
+    if (!ed) return;
+    ed.classList.toggle('con-panel', !!h);
+    app.querySelectorAll('[data-accion="herramienta"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.h === h)));
+    const panel = document.getElementById('ed-panel');
+    panel.hidden = !h;
+    panel.setAttribute('aria-label', h ? TITULO_PANEL[h] : '');
+    document.getElementById('ed-panel-titulo').textContent = h ? TITULO_PANEL[h] : '';
+    document.getElementById('panel-opciones').innerHTML = h ? panelOpciones() : '';
+    if (h) dibujarMiniaturas();
+    ajustarVista();
+    if (enfocar) {
+      const c = document.getElementById(enfocar);
+      if (c) { c.focus(); if (c.select) c.select(); }
+    }
+  }
+
+  // La foto entra entera en el espacio que queda (achica cuando se abre el panel o el teclado)
+  function ajustarVista() {
+    const caja = app.querySelector('.ed-foto');
+    const vista = app.querySelector('.editor2 .vista-previa');
+    const e = estado.editor;
+    if (!caja || !vista || !e) return;
+    const t = S.tamanoSalida(e.img);
+    const r = t.W / t.H;
+    const W = caja.clientWidth, H = caja.clientHeight;
+    if (!W || !H) return;
+    let w = W, hh = W / r;
+    if (hh > H) { hh = H; w = H * r; }
+    vista.style.width = Math.floor(w) + 'px';
+    vista.style.height = Math.floor(hh) + 'px';
+  }
+
+  function campoDatos() {
+    const e = estado.editor;
+    return '<div class="campos">' +
       '<div class="campo"><label for="nombre">Nombre del producto</label><input id="nombre" data-campo="nombre" value="' + esc(e.nombre) + '" placeholder="Ej: Vasos de vidrio x 6" autocomplete="off" enterkeyhint="next"></div>' +
+      '<div class="campo"><label for="precio">Precio</label><div class="con-signo"><span>$</span><input id="precio" data-campo="precio" inputmode="numeric" value="' + esc(e.precio ? Number(e.precio).toLocaleString('es-AR') : '') + '" placeholder="5.000" autocomplete="off" enterkeyhint="done"></div></div>' +
       '<div class="campo campo-rubro"><label for="rubro">Rubro <span class="detalle" id="rubro-ayuda">' + (e.rubroManual ? '(elegido por vos)' : '(lo detecta la app)') + '</span></label>' +
       '<select id="rubro" data-campo="rubro">' + RUBROS.TODOS.map((r) => '<option value="' + r.id + '"' + (r.id === rubroEditor() ? ' selected' : '') + '>' + esc(r.nombre) + '</option>').join('') + '</select></div>' +
-      '<div class="campo"><label for="precio">Precio</label><div class="con-signo"><span>$</span><input id="precio" data-campo="precio" inputmode="numeric" value="' + esc(e.precio ? Number(e.precio).toLocaleString('es-AR') : '') + '" placeholder="5.000" autocomplete="off" enterkeyhint="done"></div></div>' +
-      '</div>' +
-      '<div class="pestanas" role="tablist">' + pestanas.map((t) =>
-        '<button role="tab" data-accion="pestana" data-pestana="' + t[0] + '" aria-selected="' + (e.pestana === t[0]) + '">' + t[1] + '</button>').join('') + '</div>' +
-      '<div id="panel-opciones">' + panelOpciones() + '</div>' +
+      '</div>';
+  }
+
+  function panelMas() {
+    const e = estado.editor;
+    return '<div class="ed-mas">' +
+      '<button class="btn btn-ancho" data-accion="reacomodar">Volver a acomodar precio, nombre y logo</button>' +
+      '<label class="interruptor"><input type="checkbox" data-ajuste="mostrarNegocio"' + (ajustes.mostrarNegocio ? ' checked' : '') + '><span>Poner el nombre del negocio' + (logo ? ' y el logo' : '') + '</span></label>' +
+      '<a class="btn-texto" href="#ajustes">Cambiar nombre del negocio, logo o color →</a>' +
       (e.id ? '<button class="btn btn-peligro btn-ancho" data-accion="pedir-borrar" data-id="' + esc(e.id) + '">' + ICONO_TACHO + ' Eliminar este producto</button>' : '') +
-      '</main>' +
-      '<div class="barra-abajo"><button class="btn btn-marca btn-ancho" data-accion="compartir">Compartir</button></div>';
+      '</div>';
   }
 
   function rubroEditor() {
@@ -292,7 +357,9 @@
 
   function panelOpciones() {
     const e = estado.editor;
-    if (e.pestana === 'fondo') {
+    if (e.herramienta === 'datos') return campoDatos();
+    if (e.herramienta === 'mas') return panelMas();
+    if (e.herramienta === 'fondo') {
       const modos = [['original', 'Foto original'], ['retrato', 'Desenfocar fondo'], ['diseno', 'Quitar fondo']];
       const ayuda = {
         original: 'La foto tal cual la sacaste.',
@@ -306,7 +373,7 @@
         '<button class="estilo" data-accion="fondo" data-fondo="' + f.id + '" aria-pressed="' + (e.modoFondo === 'diseno' && e.fondo === f.id) + '">' +
         '<canvas width="180" height="320" data-mini-fondo="' + f.id + '" aria-hidden="true"></canvas><span>' + esc(f.nombre) + '</span></button>').join('') + '</div>';
     }
-    if (e.pestana === 'letra') {
+    if (e.herramienta === 'letra') {
       return deslizador('nombre', 'Tamaño del nombre') +
         '<div class="letras" role="group" aria-label="Tipos de letra">' + S.LETRAS.map((l) =>
         '<button class="letra" data-accion="letra" data-letra="' + l.id + '" aria-pressed="' + (e.letra === l.id) + '" style="font-family:' + esc(l.familia) + ', sans-serif;font-weight:' + l.peso + '">' +
@@ -365,6 +432,7 @@
   /* ---- Tocar la vista previa: arrastrar para mover, dos dedos para agrandar ---- */
   const dedos = new Map();
   let arrastre = null;
+  let toqueVacio = null;
   let cuadroPendiente = false;
   function dibujarEnElProximoCuadro() {
     if (cuadroPendiente) return;
@@ -397,10 +465,10 @@
       const p = puntoEnLienzo(ev, lienzo);
       if (!arrastre) {
         const k = elementoEn(p);
-        if (!k) return;
+        if (!k) { toqueVacio = { id: ev.pointerId, x: ev.clientX, y: ev.clientY }; return; }
         const usada = (e.capasUsadas && e.capasUsadas[k]) || { x: 0.5, y: 0.5, escala: 1 };
         e.capas[k] = Object.assign({}, usada, e.capas[k] && e.capas[k].escala ? { escala: e.capas[k].escala } : {});
-        arrastre = { clave: k, inicio: p, x0: e.capas[k].x, y0: e.capas[k].y, escala0: e.capas[k].escala || 1, dist0: 0 };
+        arrastre = { clave: k, inicio: p, x0: e.capas[k].x, y0: e.capas[k].y, escala0: e.capas[k].escala || 1, dist0: 0, cx: ev.clientX, cy: ev.clientY, movio: false };
         lienzo.classList.add('arrastrando');
       }
       dedos.set(ev.pointerId, p);
@@ -414,6 +482,8 @@
       const p = puntoEnLienzo(ev, lienzo);
       dedos.set(ev.pointerId, p);
       const capa = e.capas[arrastre.clave];
+      if (!arrastre.movio && (dedos.size >= 2 || Math.hypot(ev.clientX - arrastre.cx, ev.clientY - arrastre.cy) > 8)) arrastre.movio = true;
+      if (!arrastre.movio) return;
       if (dedos.size >= 2 && arrastre.dist0 > 0) {
         capa.escala = Math.max(0.5, Math.min(2.2, arrastre.escala0 * distancia() / arrastre.dist0));
         sincronizarDeslizador(arrastre.clave);
@@ -425,7 +495,27 @@
       ev.preventDefault();
     });
     const soltar = (ev) => {
+      if (toqueVacio && toqueVacio.id === ev.pointerId) {
+        // tocar la foto donde no hay nada: cierra el panel para ver la foto grande
+        if (ev.type === 'pointerup' && Math.hypot(ev.clientX - toqueVacio.x, ev.clientY - toqueVacio.y) < 10 && estado.editor.herramienta) {
+          if (document.activeElement) document.activeElement.blur();
+          abrirHerramienta(null);
+        }
+        toqueVacio = null;
+      }
       dedos.delete(ev.pointerId);
+      if (dedos.size === 0 && arrastre && !arrastre.movio) {
+        // fue un toque: abrir lo que corresponde
+        const k = arrastre.clave;
+        arrastre = null;
+        lienzo.classList.remove('arrastrando');
+        if (ev.type === 'pointerup') {
+          if (k === 'precio') abrirHerramienta('datos', 'precio');
+          else if (k === 'nombre') abrirHerramienta('datos', 'nombre');
+          else abrirHerramienta('mas');
+        }
+        return;
+      }
       if (dedos.size === 0 && arrastre) {
         // guardar la posición que quedó dentro de la imagen
         const e = estado.editor;
@@ -452,8 +542,19 @@
   }
 
   let temporizadorVista = null;
+  let observador = null;
   function prepararEditor() {
     conectarGestos();
+    ajustarVista();
+    if (observador) observador.disconnect();
+    if (window.ResizeObserver) { observador = new ResizeObserver(() => ajustarVista()); observador.observe(app.querySelector('.ed-foto')); }
+    const ayuda = document.getElementById('ed-ayuda');
+    const vistas = Number(local.leer('mostrador:ayuda-editor') || 0);
+    if (ayuda) {
+      if (vistas >= 4) ayuda.remove();
+      else { local.escribir('mostrador:ayuda-editor', String(vistas + 1)); setTimeout(() => ayuda.classList.add('oculta'), 6000); }
+    }
+    if (estado.editor.herramienta === 'datos' && !estado.editor.nombre) setTimeout(() => { const c = document.getElementById('nombre'); if (c) c.focus(); }, 350);
     if (window.RECORTE && RECORTE.disponible()) setTimeout(() => RECORTE.preparar().catch(() => null), 600);
     S.prepararFuentes().then(() => { dibujarVista(); dibujarMiniaturas(); });
     dibujarVista();
@@ -532,8 +633,8 @@
   async function abrirCompartir() {
     const e = estado.editor;
     e.nombre = (e.nombre || '').trim();
-    if (!e.nombre) { avisar('Escribí el nombre del producto'); const c = document.getElementById('nombre'); if (c) c.focus(); return; }
-    if (!(Number(e.precio) > 0)) { avisar('Escribí el precio'); const c = document.getElementById('precio'); if (c) c.focus(); return; }
+    if (!e.nombre) { avisar('Escribí el nombre del producto'); abrirHerramienta('datos', 'nombre'); return; }
+    if (!(Number(e.precio) > 0)) { avisar('Escribí el precio'); abrirHerramienta('datos', 'precio'); return; }
     let p;
     try { p = await guardarEditor(); } catch (err) { avisar('No se pudo guardar. Probá de nuevo.'); return; }
     // La imagen se arma antes, así "Compartir" abre al instante
@@ -765,12 +866,8 @@
       dibujarVista();
       avisar('Listo, volvió todo a su lugar');
     },
-    pestana: (el) => {
-      estado.editor.pestana = el.dataset.pestana;
-      app.querySelectorAll('[data-accion="pestana"]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.pestana === estado.editor.pestana)));
-      document.getElementById('panel-opciones').innerHTML = panelOpciones();
-      dibujarMiniaturas();
-    },
+    herramienta: (el) => abrirHerramienta(estado.editor.herramienta === el.dataset.h ? null : el.dataset.h),
+    'cerrar-panel': () => { if (document.activeElement) document.activeElement.blur(); abrirHerramienta(null); },
     fondo: (el) => {
       // los diseños van detrás del producto recortado: si hace falta, se recorta solo
       cambiarModoFondo('diseno', el.dataset.fondo);
@@ -868,7 +965,7 @@
       b.textContent = n ? 'Empezar (' + n + (n === 1 ? ' red)' : ' redes)') : 'Elegí al menos una red';
       return;
     }
-    if (el.dataset.ajuste === 'mostrarNegocio' || el.dataset.ajuste === 'mostrarCodigo') { ajustes[el.dataset.ajuste] = el.checked; guardarAjustes(); }
+    if (el.dataset.ajuste === 'mostrarNegocio' || el.dataset.ajuste === 'mostrarCodigo') { ajustes[el.dataset.ajuste] = el.checked; guardarAjustes(); if (vistaActual() === 'editor') dibujarVista(); }
     if (el.dataset.ajuste === 'negocio' && !el.value.trim()) { ajustes.negocio = AJUSTES_BASE.negocio; el.value = ajustes.negocio; guardarAjustes(); }
   });
 

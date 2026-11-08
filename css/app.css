@@ -279,3 +279,49 @@ body.con-capa { overflow: hidden; }
 .campo-rubro .detalle { font-size: 12px; font-weight: 500; }
 .busqueda.catalogo { margin-top: 16px; }
 .busqueda + #grilla-catalogo .grilla.catalogo { margin-top: 0; }
+
+/* ===== Etapa 4: editor estilo historias ===== */
+body[data-vista="editor"] { overflow: hidden; overscroll-behavior: none; }
+.editor2 { position: fixed; inset: 0; display: flex; flex-direction: column; background: #101116; color: #fff; height: 100dvh; }
+.ed-top { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 10px 8px; }
+.ed-top b { font-size: 15px; font-weight: 700; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-volver { width: 44px; height: 44px; display: grid; place-items: center; color: #fff; border-radius: 50%; }
+.ed-volver:active { background: rgb(255 255 255 / .12); }
+.ed-compartir { min-height: 44px; padding: 0 20px; font-size: 16px; border-radius: 999px; }
+.ed-escena { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 0 6px 10px 12px; }
+.ed-foto { min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; }
+.editor2 .vista-previa { max-width: none; margin: 0; border-radius: 14px; position: relative; box-shadow: 0 10px 40px -12px rgb(0 0 0 / .8); }
+.editor2 .vista-previa canvas { width: 100%; height: 100%; }
+.ed-ayuda { position: absolute; left: 10px; right: 10px; top: 10px; padding: 9px 12px; border-radius: 12px; background: rgb(10 10 16 / .72); color: #fff; font-size: 13px; font-weight: 600; line-height: 1.3; text-align: center; pointer-events: none; transition: opacity .6s; }
+.ed-ayuda.oculta { opacity: 0; }
+.ed-herramientas { display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.ed-herramientas button { width: 60px; min-height: 58px; border: 0; border-radius: 16px; background: none; color: #fff; display: grid; justify-items: center; align-content: center; gap: 3px; font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.ed-herramientas button svg { width: 26px; height: 26px; padding: 7px; box-sizing: content-box; border-radius: 50%; background: rgb(255 255 255 / .12); }
+.ed-herramientas button[aria-pressed="true"] svg { background: #fff; color: #101116; }
+.ed-panel { background: var(--superficie); color: var(--texto); border-radius: 20px 20px 0 0; padding: 10px 14px calc(14px + env(safe-area-inset-bottom)); max-height: 46dvh; overflow-y: auto; overscroll-behavior: contain; box-shadow: 0 -10px 30px -10px rgb(0 0 0 / .5); animation: subir-panel .18s ease-out; }
+.ed-panel[hidden] { display: none; }
+@keyframes subir-panel { from { transform: translateY(24px); opacity: .4; } }
+@media (prefers-reduced-motion: reduce) { .ed-panel { animation: none; } }
+.ed-panel-cab { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; position: sticky; top: -10px; background: var(--superficie); padding-top: 2px; z-index: 1; }
+.ed-panel-cab b { font-size: 15px; }
+.ed-panel .campos { margin: 0; }
+.ed-panel .campo input { min-height: 48px; font-size: 17px; }
+.ed-panel .tamano { margin: 0 0 10px; }
+.ed-panel .letras { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 150px; overflow-x: auto; padding-bottom: 6px; }
+.ed-panel .modos-fondo { margin-bottom: 4px; }
+.ed-panel .detalle { margin: 4px 0 8px; }
+.ed-mas { display: grid; gap: 12px; }
+.ed-mas .btn-texto { justify-self: start; }
+.con-insignia .ed-panel { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
+.con-insignia .editor2:not(.con-panel) .ed-escena { padding-bottom: 54px; }
+@media (min-width: 700px) {
+  .ed-panel { width: min(640px, 100%); margin: 0 auto; }
+}
+.ed-herramientas { overflow-y: auto; justify-content: safe center; scrollbar-width: none; }
+.ed-herramientas::-webkit-scrollbar { display: none; }
+@media (max-height: 760px) {
+  .con-panel .ed-herramientas span { display: none; }
+  .con-panel .ed-herramientas button { min-height: 46px; }
+  .ed-panel { max-height: 44dvh; }
+  .ed-ayuda { font-size: 12px; padding: 7px 10px; }
+}
