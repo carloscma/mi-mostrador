@@ -1,0 +1,6 @@
+# Archivos que no se suben a GitHub
+# (dist se arma sola en Netlify con "node build.js")
+dist/
+node_modules/
+.DS_Store
+Thumbs.db

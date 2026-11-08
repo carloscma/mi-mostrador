@@ -1,0 +1,4 @@
+# Netlify: arma la app con build.js y publica la carpeta dist
+[build]
+  command = "node build.js"
+  publish = "dist"
