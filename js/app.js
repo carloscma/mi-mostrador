@@ -188,7 +188,9 @@
   }
 
   async function abrirEditor(p) {
-    estado.editor = Object.assign({ pestana: 'sticker', fondo: 'desenfocado', letra: 'moderna' }, p);
+    estado.editor = Object.assign({ pestana: 'sticker', fondo: 'desenfocado', letra: 'moderna', capas: {} }, p);
+    estado.editor.capas = JSON.parse(JSON.stringify(p.capas || {}));
+    if (!estado.editor.modoFondo) estado.editor.modoFondo = p.recortado ? 'diseno' : 'original';
     estado.editor.img = await cargarImagen(p.foto);
     estado.editor.imgRecorte = p.recorte ? await cargarImagen(p.recorte) : null;
     if (location.hash === '#editor') navegar(); else location.hash = 'editor';
@@ -202,6 +204,7 @@
     return '<header class="barra-top"><a class="btn-texto" href="#inicio">← Volver</a><b>' + (e.id ? 'Editar publicación' : 'Nueva publicación') + '</b>' +
       '<span></span></header>' +
       '<main class="pagina editor">' +
+      '<div class="ayuda-gestos"><span>Arrastrá el precio, el nombre o el logo con el dedo. Con dos dedos los agrandás.</span><button class="btn btn-chico" data-accion="reacomodar">Reacomodar</button></div>' +
       '<div class="vista-previa" style="' + proporcion(e) + '"><canvas id="lienzo" aria-label="Vista previa de la imagen"></canvas><span class="trabajando-aviso" aria-live="polite">Recortando el producto…<small>La primera vez puede tardar unos segundos</small></span></div>' +
       '<div class="campos">' +
       '<div class="campo"><label for="nombre">Nombre del producto</label><input id="nombre" data-campo="nombre" value="' + esc(e.nombre) + '" placeholder="Ej: Vasos de vidrio x 6" autocomplete="off" enterkeyhint="next"></div>' +
@@ -220,52 +223,77 @@
     return 'aspect-ratio:' + t.W + ' / ' + t.H + ';--r:' + (t.W / t.H).toFixed(4);
   }
 
+  function deslizador(clave, titulo) {
+    const e = estado.editor;
+    const v = Math.round(((e.capas[clave] && e.capas[clave].escala) || 1) * 100);
+    return '<div class="tamano"><label for="tam-' + clave + '">' + titulo + '</label>' +
+      '<input type="range" id="tam-' + clave + '" min="50" max="220" step="5" value="' + v + '" data-tamano="' + clave + '">' +
+      '<output id="tam-' + clave + '-v">' + v + '%</output></div>';
+  }
+
   function panelOpciones() {
     const e = estado.editor;
     if (e.pestana === 'fondo') {
-      const boton = e.recortado
-        ? '<div class="recorte-caja activo"><div><b>Fondo de la foto quitado</b><span class="detalle">El producto va recortado sobre el diseño.</span></div><button class="btn btn-chico" data-accion="sin-recorte">Volver a la foto</button></div>'
-        : '<div class="recorte-caja"><div><b>Quitar el fondo de la foto</b><span class="detalle">Recorta el producto y lo pone sobre el diseño que elijas.</span></div><button class="btn btn-chico btn-marca" data-accion="recortar">Quitar fondo</button></div>';
-      return boton + '<div class="estilos fondos" role="group" aria-label="Fondos">' + S.FONDOS.map((f) =>
-        '<button class="estilo" data-accion="fondo" data-fondo="' + f.id + '" aria-pressed="' + (e.fondo === f.id) + '">' +
+      const modos = [['original', 'Foto original'], ['retrato', 'Desenfocar fondo'], ['diseno', 'Quitar fondo']];
+      const ayuda = {
+        original: 'La foto tal cual la sacaste.',
+        retrato: 'El producto queda nítido y lo de atrás se pone borroso, como el modo retrato.',
+        diseno: 'El producto va recortado sobre el diseño que elijas abajo.'
+      }[e.modoFondo];
+      return '<div class="modos-fondo" role="group" aria-label="Fondo de la foto">' + modos.map((m) =>
+        '<button data-accion="modo-fondo" data-modo="' + m[0] + '" aria-pressed="' + (e.modoFondo === m[0]) + '">' + m[1] + '</button>').join('') + '</div>' +
+        '<p class="detalle">' + ayuda + '</p>' +
+        '<div class="estilos fondos' + (e.modoFondo === 'diseno' ? '' : ' apagados') + '" role="group" aria-label="Diseños de fondo">' + S.FONDOS.map((f) =>
+        '<button class="estilo" data-accion="fondo" data-fondo="' + f.id + '" aria-pressed="' + (e.modoFondo === 'diseno' && e.fondo === f.id) + '">' +
         '<canvas width="180" height="320" data-mini-fondo="' + f.id + '" aria-hidden="true"></canvas><span>' + esc(f.nombre) + '</span></button>').join('') + '</div>';
     }
     if (e.pestana === 'letra') {
-      return '<div class="letras" role="group" aria-label="Tipos de letra">' + S.LETRAS.map((l) =>
+      return deslizador('nombre', 'Tamaño del nombre') +
+        '<div class="letras" role="group" aria-label="Tipos de letra">' + S.LETRAS.map((l) =>
         '<button class="letra" data-accion="letra" data-letra="' + l.id + '" aria-pressed="' + (e.letra === l.id) + '" style="font-family:' + esc(l.familia) + ', sans-serif;font-weight:' + l.peso + '">' +
         '<b' + (l.mayus ? ' style="text-transform:uppercase"' : '') + '>' + esc(e.nombre || 'Mi producto') + '</b><span>' + esc(l.nombre) + '</span></button>').join('') + '</div>';
     }
-    return '<div class="fila"><span class="detalle">Elegí el sticker del precio</span><button class="btn btn-chico" data-accion="mover">Mover sticker ↻</button></div>' +
+    return deslizador('precio', 'Tamaño del precio') +
       '<div class="estilos" role="group" aria-label="Estilos de sticker">' + S.ESTILOS.map((st) =>
         '<button class="estilo" data-accion="estilo" data-estilo="' + st.id + '" aria-pressed="' + (e.estilo === st.id) + '">' +
         '<canvas width="240" height="240" data-mini="' + st.id + '" aria-hidden="true"></canvas><span>' + esc(st.nombre) + '</span></button>').join('') + '</div>';
   }
 
-  async function recortarProducto(conservarFondo) {
+  // Recorta el producto (si hace falta) y pasa al modo pedido: 'diseno' o 'retrato'
+  async function prepararRecorte(modo) {
     const e = estado.editor;
-    if (e.recorte && e.imgRecorte) { e.recortado = true; if (!conservarFondo && e.fondo === 'desenfocado') e.fondo = 'estudio'; refrescarPanel(); dibujarVista(); return; }
-    if (!window.RECORTE || !RECORTE.disponible()) { avisar('Este celular no permite recortar automáticamente.'); return; }
-    const caja = app.querySelector('.vista-previa');
-    if (caja) caja.classList.add('trabajando');
-    const boton = app.querySelector('[data-accion="recortar"]');
-    if (boton) { boton.disabled = true; boton.textContent = 'Recortando…'; }
-    // dejar que se vea el aviso antes de ponerse a trabajar
-    await new Promise((ok) => requestAnimationFrame(() => setTimeout(ok, 30)));
-    try {
-      const r = await RECORTE.recortar(e.img);
-      e.recorte = r.imagen.toDataURL('image/png');
-      e.imgRecorte = await cargarImagen(e.recorte);
-      e.recortado = true;
-      if (!conservarFondo && e.fondo === 'desenfocado') e.fondo = 'estudio';
-      avisar('¡Listo! Ahora elegí el fondo que más te guste.');
-    } catch (err) {
-      const msj = String(err && err.message);
-      avisar(msj === 'sin-objeto' ? 'No encontramos el producto. Probá con una foto donde se vea entero y centrado.'
-        : msj.indexOf('sin-') === 0 ? 'Este celular no permite recortar automáticamente.'
-          : 'No se pudo recortar. Revisá tu conexión y probá de nuevo.');
-    } finally {
-      if (caja) caja.classList.remove('trabajando');
+    const listo = e.recorte && e.imgRecorte && (modo !== 'retrato' || e.recorteCaja);
+    if (!listo) {
+      if (!window.RECORTE || !RECORTE.disponible()) { avisar('Este celular no permite recortar automáticamente.'); return false; }
+      const caja = app.querySelector('.vista-previa');
+      if (caja) caja.classList.add('trabajando');
+      app.querySelectorAll('[data-accion="modo-fondo"]').forEach((b) => { b.disabled = true; });
+      await new Promise((ok) => requestAnimationFrame(() => setTimeout(ok, 30)));
+      try {
+        const r = await RECORTE.recortar(e.img);
+        e.recorte = r.imagen.toDataURL('image/png');
+        e.recorteCaja = r.caja;
+        e.imgRecorte = await cargarImagen(e.recorte);
+      } catch (err) {
+        const msj = String(err && err.message);
+        avisar(msj === 'sin-objeto' ? 'No encontramos el producto. Probá con una foto donde se vea entero y centrado.'
+          : msj.indexOf('sin-') === 0 ? 'Este celular no permite recortar automáticamente.'
+            : 'No se pudo recortar. Revisá tu conexión y probá de nuevo.');
+        return false;
+      } finally {
+        if (caja) caja.classList.remove('trabajando');
+      }
     }
+    e.modoFondo = modo;
+    if (modo === 'diseno' && e.fondo === 'desenfocado' && !e._eligioFondo) e.fondo = 'estudio';
+    return true;
+  }
+
+  async function cambiarModoFondo(modo, fondo) {
+    const e = estado.editor;
+    if (fondo) { e.fondo = fondo; e._eligioFondo = true; }
+    if (modo === 'original') e.modoFondo = 'original';
+    else await prepararRecorte(modo);
     refrescarPanel();
     dibujarVista();
   }
@@ -275,8 +303,98 @@
     if (panel) { panel.innerHTML = panelOpciones(); dibujarMiniaturas(); }
   }
 
+  /* ---- Tocar la vista previa: arrastrar para mover, dos dedos para agrandar ---- */
+  const dedos = new Map();
+  let arrastre = null;
+  let cuadroPendiente = false;
+  function dibujarEnElProximoCuadro() {
+    if (cuadroPendiente) return;
+    cuadroPendiente = true;
+    requestAnimationFrame(() => { cuadroPendiente = false; dibujarVista(); });
+  }
+  function puntoEnLienzo(ev, lienzo) {
+    const r = lienzo.getBoundingClientRect();
+    return { x: (ev.clientX - r.left) * lienzo.width / r.width, y: (ev.clientY - r.top) * lienzo.height / r.height };
+  }
+  function elementoEn(p) {
+    const e = estado.editor;
+    const orden = ['precio', 'marca', 'nombre'];  // el de arriba primero
+    const margen = 14;
+    for (const k of orden) {
+      const c = e.cajas && e.cajas[k];
+      if (c && Math.abs(p.x - c.cx) <= c.w / 2 + margen && Math.abs(p.y - c.cy) <= c.h / 2 + margen) return k;
+    }
+    return null;
+  }
+  function distancia() {
+    const v = Array.from(dedos.values());
+    return Math.hypot(v[0].x - v[1].x, v[0].y - v[1].y);
+  }
+  function conectarGestos() {
+    const lienzo = document.getElementById('lienzo');
+    if (!lienzo) return;
+    lienzo.addEventListener('pointerdown', (ev) => {
+      const e = estado.editor;
+      const p = puntoEnLienzo(ev, lienzo);
+      if (!arrastre) {
+        const k = elementoEn(p);
+        if (!k) return;
+        const usada = (e.capasUsadas && e.capasUsadas[k]) || { x: 0.5, y: 0.5, escala: 1 };
+        e.capas[k] = Object.assign({}, usada, e.capas[k] && e.capas[k].escala ? { escala: e.capas[k].escala } : {});
+        arrastre = { clave: k, inicio: p, x0: e.capas[k].x, y0: e.capas[k].y, escala0: e.capas[k].escala || 1, dist0: 0 };
+        lienzo.classList.add('arrastrando');
+      }
+      dedos.set(ev.pointerId, p);
+      try { lienzo.setPointerCapture(ev.pointerId); } catch (err) { /* nada */ }
+      if (dedos.size === 2) { arrastre.dist0 = distancia(); arrastre.escala0 = estado.editor.capas[arrastre.clave].escala || 1; }
+      ev.preventDefault();
+    });
+    lienzo.addEventListener('pointermove', (ev) => {
+      if (!arrastre || !dedos.has(ev.pointerId)) return;
+      const e = estado.editor;
+      const p = puntoEnLienzo(ev, lienzo);
+      dedos.set(ev.pointerId, p);
+      const capa = e.capas[arrastre.clave];
+      if (dedos.size >= 2 && arrastre.dist0 > 0) {
+        capa.escala = Math.max(0.5, Math.min(2.2, arrastre.escala0 * distancia() / arrastre.dist0));
+        sincronizarDeslizador(arrastre.clave);
+      } else if (dedos.size === 1) {
+        capa.x = arrastre.x0 + (p.x - arrastre.inicio.x) / lienzo.width;
+        capa.y = arrastre.y0 + (p.y - arrastre.inicio.y) / lienzo.height;
+      }
+      dibujarEnElProximoCuadro();
+      ev.preventDefault();
+    });
+    const soltar = (ev) => {
+      dedos.delete(ev.pointerId);
+      if (dedos.size === 0 && arrastre) {
+        // guardar la posición que quedó dentro de la imagen
+        const e = estado.editor;
+        if (e.capasUsadas && e.capasUsadas[arrastre.clave]) e.capas[arrastre.clave] = Object.assign({}, e.capasUsadas[arrastre.clave], { escala: e.capas[arrastre.clave].escala });
+        arrastre = null;
+        lienzo.classList.remove('arrastrando');
+      } else if (dedos.size === 1 && arrastre) {
+        // quedó un dedo: sigue moviendo desde donde está
+        const p = Array.from(dedos.values())[0];
+        const capa = estado.editor.capas[arrastre.clave];
+        arrastre.inicio = p; arrastre.x0 = capa.x; arrastre.y0 = capa.y; arrastre.dist0 = 0;
+      }
+    };
+    lienzo.addEventListener('pointerup', soltar);
+    lienzo.addEventListener('pointercancel', soltar);
+  }
+  function sincronizarDeslizador(clave) {
+    const e = estado.editor;
+    const input = document.getElementById('tam-' + clave);
+    const v = Math.round(((e.capas[clave] && e.capas[clave].escala) || 1) * 100);
+    if (input) input.value = v;
+    const out = document.getElementById('tam-' + clave + '-v');
+    if (out) out.textContent = v + '%';
+  }
+
   let temporizadorVista = null;
   function prepararEditor() {
+    conectarGestos();
     if (window.RECORTE && RECORTE.disponible()) setTimeout(() => RECORTE.preparar().catch(() => null), 600);
     S.prepararFuentes().then(() => { dibujarVista(); dibujarMiniaturas(); });
     dibujarVista();
@@ -285,21 +403,22 @@
 
   function datosEditor() {
     const e = estado.editor;
-    return { foto: e.img, recorte: e.imgRecorte, nombre: e.nombre || 'Nombre del producto', precio: Number(e.precio) || 0, codigo: ajustes.mostrarCodigo ? e.codigo : '' };
+    return { foto: e.img, recorte: e.imgRecorte, recorteCaja: e.recorteCaja, nombre: e.nombre || 'Nombre del producto', precio: Number(e.precio) || 0, codigo: ajustes.mostrarCodigo ? e.codigo : '' };
   }
   function opcionesEditor() {
     const e = estado.editor;
-    return { estilo: e.estilo, posicion: e.posicion, negocio: ajustes.negocio, mostrarNegocio: ajustes.mostrarNegocio, color: ajustes.color, fondo: e.fondo, letra: e.letra, logo: logo, recortado: !!(e.recortado && e.imgRecorte) };
+    return { estilo: e.estilo, posicion: e.posicion, negocio: ajustes.negocio, mostrarNegocio: ajustes.mostrarNegocio, color: ajustes.color, fondo: e.fondo, letra: e.letra, logo: logo, modoFondo: e.imgRecorte ? e.modoFondo : 'original', capas: e.capas };
   }
 
   function dibujarVista() {
     const e = estado.editor;
     const lienzo = document.getElementById('lienzo');
     if (!e || !lienzo) return;
-    const imagen = S.componer(datosEditor(), opcionesEditor());
-    lienzo.width = Math.round(imagen.width / 2);
-    lienzo.height = Math.round(imagen.height / 2);
-    lienzo.getContext('2d').drawImage(imagen, 0, 0, lienzo.width, lienzo.height);
+    const imagen = S.componer(datosEditor(), Object.assign(opcionesEditor(), { escalaVista: 0.5 }));
+    if (lienzo.width !== imagen.width || lienzo.height !== imagen.height) { lienzo.width = imagen.width; lienzo.height = imagen.height; }
+    lienzo.getContext('2d').drawImage(imagen, 0, 0);
+    e.cajas = imagen.cajas;
+    e.capasUsadas = imagen.capas;
   }
 
   function dibujarMiniaturas() {
@@ -311,7 +430,7 @@
     });
     const e = estado.editor;
     app.querySelectorAll('canvas[data-mini-fondo]').forEach((c) => {
-      c.getContext('2d').drawImage(S.miniaturaFondo(c.dataset.miniFondo, ajustes.color, e && e.img, e && e.recortado ? e.imgRecorte : null), 0, 0);
+      c.getContext('2d').drawImage(S.miniaturaFondo(c.dataset.miniFondo, ajustes.color, e && e.img, e && e.imgRecorte ? e.imgRecorte : null), 0, 0);
     });
   }
 
@@ -326,7 +445,9 @@
       id: e.id || 'p' + Date.now().toString(36),
       foto: e.foto, nombre: e.nombre.trim(), precio: Number(e.precio) || 0,
       estilo: e.estilo, posicion: e.posicion, fondo: e.fondo, letra: e.letra, codigo: e.codigo, fecha: e.fecha || Date.now(),
-      recorte: e.recorte || null, recortado: !!e.recortado
+      recorte: e.recorte || null, recorteCaja: e.recorteCaja || null,
+      modoFondo: e.modoFondo || 'original', recortado: e.modoFondo === 'diseno',
+      capas: e.capas || {}
     };
     await ALMACEN.guardar(p);
     e.id = p.id; e.fecha = p.fecha;
@@ -539,13 +660,7 @@
       app.querySelectorAll('[data-accion="estilo"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.estilo === estado.editor.estilo)));
       dibujarVista();
     },
-    mover: () => {
-      const e = estado.editor;
-      if (e.estilo === 'banda') { avisar('La banda va siempre abajo. Elegí otro sticker para moverlo.'); return; }
-      const i = S.POSICIONES.indexOf(e.posicion);
-      e.posicion = S.POSICIONES[(i + 1) % S.POSICIONES.length];
-      dibujarVista();
-    },
+
     'pedir-borrar': (el) => {
       const p = estado.productos.find((x) => x.id === el.dataset.id);
       if (p) abrirCapa({ tipo: 'borrar', producto: p });
@@ -561,8 +676,13 @@
       avisar('Producto eliminado');
     },
     compartir: () => abrirCompartir(),
-    recortar: () => recortarProducto(),
-    'sin-recorte': () => { estado.editor.recortado = false; refrescarPanel(); dibujarVista(); },
+    'modo-fondo': (el) => cambiarModoFondo(el.dataset.modo),
+    reacomodar: () => {
+      estado.editor.capas = {};
+      ['precio', 'nombre'].forEach(sincronizarDeslizador);
+      dibujarVista();
+      avisar('Listo, volvió todo a su lugar');
+    },
     pestana: (el) => {
       estado.editor.pestana = el.dataset.pestana;
       app.querySelectorAll('[data-accion="pestana"]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.pestana === estado.editor.pestana)));
@@ -570,11 +690,8 @@
       dibujarMiniaturas();
     },
     fondo: (el) => {
-      estado.editor.fondo = el.dataset.fondo;
-      app.querySelectorAll('[data-accion="fondo"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.fondo === estado.editor.fondo)));
-      // los fondos se ven detrás del producto recortado: si todavía no se recortó, se recorta solo
-      if (!estado.editor.recortado) { recortarProducto(true); return; }
-      dibujarVista();
+      // los diseños van detrás del producto recortado: si hace falta, se recorta solo
+      cambiarModoFondo('diseno', el.dataset.fondo);
     },
     letra: (el) => {
       estado.editor.letra = el.dataset.letra;
@@ -610,6 +727,14 @@
 
   document.addEventListener('input', (ev) => {
     const el = ev.target;
+    if (el.dataset.tamano && estado.editor) {
+      const k = el.dataset.tamano, e = estado.editor;
+      e.capas[k] = Object.assign({}, (e.capasUsadas && e.capasUsadas[k]) || {}, e.capas[k] || {}, { escala: Number(el.value) / 100 });
+      if (!e.capas[k].x && e.capas[k].x !== 0) delete e.capas[k].x;
+      const out = document.getElementById('tam-' + k + '-v'); if (out) out.textContent = el.value + '%';
+      dibujarEnElProximoCuadro();
+      return;
+    }
     const e = estado.editor;
     if (el.dataset.campo === 'nombre' && e) {
       e.nombre = el.value; redibujarPronto(false);

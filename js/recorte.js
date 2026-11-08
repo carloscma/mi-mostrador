@@ -411,7 +411,8 @@ void main(){ float v = texelFetch(uIn, ivec2(gl_FragCoord.xy), 0).x; float s = 1
     x0 = Math.max(0, x0 - mg); y0 = Math.max(0, y0 - mg); x1 = Math.min(W - 1, x1 + mg); y1 = Math.min(H - 1, y1 + mg);
     const out = document.createElement('canvas'); out.width = x1 - x0 + 1; out.height = y1 - y0 + 1;
     out.getContext('2d').drawImage(grande, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
-    return { imagen: out, cobertura: cobertura, ms: Math.round(performance.now() - t0) };
+    // caja = dónde está el recorte dentro de la foto (en proporción), para el modo retrato
+    return { imagen: out, cobertura: cobertura, caja: { x: x0 / W, y: y0 / H, w: out.width / W, h: out.height / H }, ms: Math.round(performance.now() - t0) };
   }
 
   function disponible() {
