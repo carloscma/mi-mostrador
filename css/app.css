@@ -258,3 +258,24 @@ body.con-capa { overflow: hidden; }
 .modos-fondo button[aria-pressed="true"] { background: var(--superficie); color: var(--texto); box-shadow: 0 1px 4px rgb(0 0 0 / .12); }
 .modos-fondo button:disabled { opacity: .5; }
 .fondos.apagados .estilo canvas { opacity: .55; }
+
+/* ===== Etapa 3: buscador, rubros y tacho en catálogo ===== */
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.busqueda { display: grid; gap: 10px; margin: 4px 0 14px; }
+.buscador { display: flex; align-items: center; gap: 8px; background: var(--superficie); border: 1.5px solid var(--borde); border-radius: 14px; padding: 0 12px; color: var(--suave); }
+.buscador:focus-within { border-color: var(--acento); color: var(--acento); }
+.buscador input { flex: 1; min-width: 0; border: 0; background: none; padding: 12px 0; font: inherit; font-size: 16px; color: var(--tinta, inherit); outline: none; }
+.chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: none; border: 1.5px solid var(--borde); background: var(--superficie); border-radius: 999px; padding: 7px 12px; font: inherit; font-size: 14px; font-weight: 600; color: inherit; white-space: nowrap; cursor: pointer; }
+.chip b { font-weight: 700; opacity: .55; margin-left: 2px; }
+.chip[aria-pressed="true"] { background: var(--acento); border-color: var(--acento); color: #fff; }
+.chip[aria-pressed="true"] b { opacity: .85; }
+.mini-nombre small { display: block; font-size: 11px; font-weight: 600; opacity: .75; }
+.prod-foto { position: relative; }
+.prod-rubro { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--suave); }
+.campo-rubro { grid-column: 1 / -1; order: 3; }
+.campo-rubro select { width: 100%; min-height: 48px; border-radius: 14px; border: 1.5px solid var(--borde); background: var(--superficie); padding: 0 12px; font: inherit; font-size: 16px; color: inherit; }
+.campo-rubro .detalle { font-size: 12px; font-weight: 500; }
+.busqueda.catalogo { margin-top: 16px; }
+.busqueda + #grilla-catalogo .grilla.catalogo { margin-top: 0; }

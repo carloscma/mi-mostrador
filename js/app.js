@@ -13,6 +13,7 @@
 
   const S = window.STICKERS;
   const ALMACEN = window.ALMACEN;
+  const RUBROS = window.RUBROS;
   const FOTOS = window.MOSTRADOR_FOTOS || {};
   const app = document.getElementById('app');
   const capa = document.getElementById('capa');
@@ -105,6 +106,7 @@
     productos: [],
     editor: null,     // la publicación que se está armando
     pedido: {},       // catálogo: id -> cantidad
+    filtro: { q: '', rubro: 'todos' },  // buscador y rubro elegido (inicio y catálogo)
     capa: null
   };
 
@@ -145,17 +147,67 @@
 
   const ICONO_TACHO = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>';
 
+  /* ================= Rubros y buscador ================= */
+  function rubroDe(p) { return p.rubroManual && p.rubro ? p.rubro : RUBROS.detectar(p.nombre); }
+
+  function filtrar(lista) {
+    const f = estado.filtro;
+    const palabras = RUBROS.normalizar(f.q).split(' ').filter(Boolean);
+    return lista.filter((p) => {
+      const r = rubroDe(p);
+      if (f.rubro !== 'todos' && r !== f.rubro) return false;
+      if (!palabras.length) return true;
+      const texto = RUBROS.normalizar([p.nombre, RUBROS.nombreDe(r), p.codigo, p.precio, pesos(p.precio)].join(' '));
+      return palabras.every((w) => texto.indexOf(w) >= 0);
+    });
+  }
+
+  // Buscador + botones de rubro (solo los rubros que tienen productos)
+  function barraBusqueda(lugar) {
+    const f = estado.filtro;
+    const cuenta = {};
+    estado.productos.forEach((p) => { const r = rubroDe(p); cuenta[r] = (cuenta[r] || 0) + 1; });
+    const rubros = Object.keys(cuenta).sort((a, b) => cuenta[b] - cuenta[a] || RUBROS.nombreDe(a).localeCompare(RUBROS.nombreDe(b), 'es'));
+    if (f.rubro !== 'todos' && !cuenta[f.rubro]) f.rubro = 'todos';
+    return '<div class="busqueda ' + lugar + '">' +
+      '<label class="buscador"><span class="sr">Buscar productos</span>' +
+      '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>' +
+      '<input type="search" id="buscar-' + lugar + '" data-buscar="' + lugar + '" placeholder="Buscar por nombre, rubro o precio" value="' + esc(f.q) + '" autocomplete="off" enterkeyhint="search"></label>' +
+      (rubros.length > 1 ? '<div class="chips" role="group" aria-label="Rubros">' +
+        '<button class="chip" data-accion="rubro-filtro" data-rubro="todos" aria-pressed="' + (f.rubro === 'todos') + '">Todos <b>' + estado.productos.length + '</b></button>' +
+        rubros.map((r) => '<button class="chip" data-accion="rubro-filtro" data-rubro="' + r + '" aria-pressed="' + (f.rubro === r) + '">' + esc(RUBROS.nombreDe(r)) + ' <b>' + cuenta[r] + '</b></button>').join('') + '</div>' : '') +
+      '</div>';
+  }
+
+  function sinResultados() {
+    return '<p class="vacio">No hay productos que coincidan' + (estado.filtro.q ? ' con "' + esc(estado.filtro.q) + '"' : '') + '. <button class="btn-texto" data-accion="limpiar-filtro">Ver todos</button></p>';
+  }
+
+  function refrescarListas() {
+    const g = document.getElementById('grilla-inicio');
+    if (g) g.innerHTML = grillaInicio();
+    const c = document.getElementById('grilla-catalogo');
+    if (c) c.innerHTML = grillaCatalogo();
+    app.querySelectorAll('[data-accion="rubro-filtro"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.rubro === estado.filtro.rubro)));
+  }
+
+  function grillaInicio() {
+    const ps = filtrar(estado.productos);
+    if (!ps.length) return sinResultados();
+    return '<div class="grilla">' + ps.map((p) =>
+      '<div class="item">' +
+      '<button class="miniatura" data-accion="abrir" data-id="' + esc(p.id) + '" aria-label="' + esc('Editar ' + p.nombre + ', ' + pesos(p.precio)) + '">' +
+      '<img src="' + p.foto + '" alt="" loading="lazy"><span class="precio-chip">' + esc(pesos(p.precio)) + '</span>' +
+      '<span class="mini-nombre">' + esc(p.nombre) + '<small>' + esc(RUBROS.nombreDe(rubroDe(p))) + '</small></span></button>' +
+      '<button class="borrar-mini" data-accion="pedir-borrar" data-id="' + esc(p.id) + '" aria-label="' + esc('Eliminar ' + p.nombre) + '">' + ICONO_TACHO + '</button>' +
+      '</div>').join('') + '</div>';
+  }
+
   /* ================= Inicio ================= */
   function vistaInicio() {
     const ps = estado.productos;
     const grilla = ps.length
-      ? '<div class="grilla">' + ps.map((p) =>
-        '<div class="item">' +
-        '<button class="miniatura" data-accion="abrir" data-id="' + esc(p.id) + '" aria-label="' + esc('Editar ' + p.nombre + ', ' + pesos(p.precio)) + '">' +
-        '<img src="' + p.foto + '" alt="" loading="lazy"><span class="precio-chip">' + esc(pesos(p.precio)) + '</span>' +
-        '<span class="mini-nombre">' + esc(p.nombre) + '</span></button>' +
-        '<button class="borrar-mini" data-accion="pedir-borrar" data-id="' + esc(p.id) + '" aria-label="' + esc('Eliminar ' + p.nombre) + '">' + ICONO_TACHO + '</button>' +
-        '</div>').join('') + '</div>'
+      ? (ps.length > 1 ? barraBusqueda('inicio') : '') + '<div id="grilla-inicio">' + grillaInicio() + '</div>'
       : '<p class="vacio">Todavía no sacaste fotos. Tocá "Sacar foto" para empezar.</p>';
 
     return '<header class="barra-top"><div class="marca-app"><i>M</i>Mostrador</div>' +
@@ -208,6 +260,8 @@
       '<div class="vista-previa" style="' + proporcion(e) + '"><canvas id="lienzo" aria-label="Vista previa de la imagen"></canvas><span class="trabajando-aviso" aria-live="polite">Recortando el producto…<small>La primera vez puede tardar unos segundos</small></span></div>' +
       '<div class="campos">' +
       '<div class="campo"><label for="nombre">Nombre del producto</label><input id="nombre" data-campo="nombre" value="' + esc(e.nombre) + '" placeholder="Ej: Vasos de vidrio x 6" autocomplete="off" enterkeyhint="next"></div>' +
+      '<div class="campo campo-rubro"><label for="rubro">Rubro <span class="detalle" id="rubro-ayuda">' + (e.rubroManual ? '(elegido por vos)' : '(lo detecta la app)') + '</span></label>' +
+      '<select id="rubro" data-campo="rubro">' + RUBROS.TODOS.map((r) => '<option value="' + r.id + '"' + (r.id === rubroEditor() ? ' selected' : '') + '>' + esc(r.nombre) + '</option>').join('') + '</select></div>' +
       '<div class="campo"><label for="precio">Precio</label><div class="con-signo"><span>$</span><input id="precio" data-campo="precio" inputmode="numeric" value="' + esc(e.precio ? Number(e.precio).toLocaleString('es-AR') : '') + '" placeholder="5.000" autocomplete="off" enterkeyhint="done"></div></div>' +
       '</div>' +
       '<div class="pestanas" role="tablist">' + pestanas.map((t) =>
@@ -216,6 +270,11 @@
       (e.id ? '<button class="btn btn-peligro btn-ancho" data-accion="pedir-borrar" data-id="' + esc(e.id) + '">' + ICONO_TACHO + ' Eliminar este producto</button>' : '') +
       '</main>' +
       '<div class="barra-abajo"><button class="btn btn-marca btn-ancho" data-accion="compartir">Compartir</button></div>';
+  }
+
+  function rubroEditor() {
+    const e = estado.editor;
+    return e.rubroManual && e.rubro ? e.rubro : RUBROS.detectar(e.nombre);
   }
 
   function proporcion(e) {
@@ -447,7 +506,8 @@
       estilo: e.estilo, posicion: e.posicion, fondo: e.fondo, letra: e.letra, codigo: e.codigo, fecha: e.fecha || Date.now(),
       recorte: e.recorte || null, recorteCaja: e.recorteCaja || null,
       modoFondo: e.modoFondo || 'original', recortado: e.modoFondo === 'diseno',
-      capas: e.capas || {}
+      capas: e.capas || {},
+      rubro: rubroEditor(), rubroManual: !!e.rubroManual
     };
     await ALMACEN.guardar(p);
     e.id = p.id; e.fecha = p.fecha;
@@ -606,15 +666,35 @@
       '<div class="fila-cab"><div class="avatar">' + esc(ajustes.negocio.split(/\s+/).slice(0, 2).map((x) => x[0] || '').join('').toUpperCase()) + '</div>' +
       '<div><h1>' + esc(ajustes.negocio) + '</h1><p>' + ps.length + ' productos · pedidos por WhatsApp</p></div></div>' +
       '<p class="aviso-vista">Vista previa: así lo van a ver tus clientes. El link para compartir el catálogo llega con la versión con cuentas.</p></header>' +
-      '<main class="pagina"><div class="grilla catalogo">' + ps.map((p) => {
-        const n = estado.pedido[p.id] || 0;
-        return '<article class="prod"><img src="' + p.foto + '" alt="' + esc(p.nombre) + '" loading="lazy">' +
-          '<div class="prod-info"><span class="prod-nombre">' + esc(p.nombre) + '</span><span class="prod-precio">' + esc(pesos(p.precio)) + '</span>' +
-          (n ? '<div class="paso-cant"><button data-accion="menos" data-id="' + esc(p.id) + '" aria-label="Restar">−</button><span>' + n + '</span><button data-accion="mas" data-id="' + esc(p.id) + '" aria-label="Sumar">+</button></div>'
-            : '<button class="btn btn-chico" data-accion="mas" data-id="' + esc(p.id) + '">Agregar</button>') +
-          '</div></article>';
-      }).join('') + '</div></main>' +
-      (cant ? '<div class="barra-abajo"><button class="btn btn-marca btn-ancho fila" data-accion="ver-pedido"><span>Ver pedido · ' + cant + '</span><span>' + esc(pesos(total)) + '</span></button></div>' : '');
+      '<main class="pagina">' + (ps.length > 1 ? barraBusqueda('catalogo') : '') +
+      '<div id="grilla-catalogo">' + grillaCatalogo() + '</div></main>' +
+      '<div id="barra-pedido">' + barraPedido(cant, total) + '</div>';
+  }
+
+  function barraPedido(cant, total) {
+    return cant ? '<div class="barra-abajo"><button class="btn btn-marca btn-ancho fila" data-accion="ver-pedido"><span>Ver pedido · ' + cant + '</span><span>' + esc(pesos(total)) + '</span></button></div>' : '';
+  }
+
+  function grillaCatalogo() {
+    const ps = filtrar(estado.productos);
+    if (!ps.length) return estado.productos.length ? sinResultados() : '<p class="vacio">Todavía no hay productos.</p>';
+    return '<div class="grilla catalogo">' + ps.map((p) => {
+      const n = estado.pedido[p.id] || 0;
+      return '<article class="prod"><div class="prod-foto"><img src="' + p.foto + '" alt="' + esc(p.nombre) + '" loading="lazy">' +
+        '<button class="borrar-mini" data-accion="pedir-borrar" data-id="' + esc(p.id) + '" aria-label="' + esc('Eliminar ' + p.nombre) + '">' + ICONO_TACHO + '</button></div>' +
+        '<div class="prod-info"><span class="prod-rubro">' + esc(RUBROS.nombreDe(rubroDe(p))) + '</span><span class="prod-nombre">' + esc(p.nombre) + '</span><span class="prod-precio">' + esc(pesos(p.precio)) + '</span>' +
+        (n ? '<div class="paso-cant"><button data-accion="menos" data-id="' + esc(p.id) + '" aria-label="Restar">−</button><span>' + n + '</span><button data-accion="mas" data-id="' + esc(p.id) + '" aria-label="Sumar">+</button></div>'
+          : '<button class="btn btn-chico" data-accion="mas" data-id="' + esc(p.id) + '">Agregar</button>') +
+        '</div></article>';
+    }).join('') + '</div>';
+  }
+
+  function refrescarCatalogo() {
+    const ps = estado.productos;
+    const total = Object.keys(estado.pedido).reduce((a, id) => { const p = ps.find((x) => x.id === id); return a + (p ? p.precio * estado.pedido[id] : 0); }, 0);
+    const cant = Object.values(estado.pedido).reduce((a, b) => a + b, 0);
+    const g = document.getElementById('grilla-catalogo'); if (g) g.innerHTML = grillaCatalogo();
+    const b = document.getElementById('barra-pedido'); if (b) b.innerHTML = barraPedido(cant, total);
   }
 
   function hojaPedido() {
@@ -671,8 +751,10 @@
       await ALMACEN.borrar(p.id);
       estado.productos = await ALMACEN.todos();
       cerrarCapa();
+      delete estado.pedido[p.id];
       if (estado.editor && estado.editor.id === p.id) estado.editor = null;
-      if (vistaActual() === 'inicio') navegar(); else location.hash = 'inicio';
+      const v = vistaActual();
+      if (v === 'inicio' || v === 'catalogo') navegar(); else location.hash = 'inicio';
       avisar('Producto eliminado');
     },
     compartir: () => abrirCompartir(),
@@ -709,8 +791,14 @@
     },
     'compartir-red': () => compartirRedActual(),
     saltar: () => avanzar(),
-    mas: (el) => { estado.pedido[el.dataset.id] = (estado.pedido[el.dataset.id] || 0) + 1; app.innerHTML = vistaCatalogo(); },
-    menos: (el) => { const n = (estado.pedido[el.dataset.id] || 0) - 1; if (n > 0) estado.pedido[el.dataset.id] = n; else delete estado.pedido[el.dataset.id]; app.innerHTML = vistaCatalogo(); },
+    mas: (el) => { estado.pedido[el.dataset.id] = (estado.pedido[el.dataset.id] || 0) + 1; refrescarCatalogo(); },
+    menos: (el) => { const n = (estado.pedido[el.dataset.id] || 0) - 1; if (n > 0) estado.pedido[el.dataset.id] = n; else delete estado.pedido[el.dataset.id]; refrescarCatalogo(); },
+    'rubro-filtro': (el) => { estado.filtro.rubro = el.dataset.rubro; refrescarListas(); },
+    'limpiar-filtro': () => {
+      estado.filtro = { q: '', rubro: 'todos' };
+      app.querySelectorAll('[data-buscar]').forEach((i) => { i.value = ''; });
+      refrescarListas();
+    },
     'ver-pedido': () => abrirCapa({ tipo: 'pedido', nombre: '' }),
     color: (el) => {
       ajustes.color = el.dataset.color; guardarAjustes(); aplicarColor();
@@ -727,6 +815,7 @@
 
   document.addEventListener('input', (ev) => {
     const el = ev.target;
+    if (el.dataset.buscar) { estado.filtro.q = el.value; refrescarListas(); return; }
     if (el.dataset.tamano && estado.editor) {
       const k = el.dataset.tamano, e = estado.editor;
       e.capas[k] = Object.assign({}, (e.capasUsadas && e.capasUsadas[k]) || {}, e.capas[k] || {}, { escala: Number(el.value) / 100 });
@@ -738,6 +827,7 @@
     const e = estado.editor;
     if (el.dataset.campo === 'nombre' && e) {
       e.nombre = el.value; redibujarPronto(false);
+      if (!e.rubroManual) { const sel = document.getElementById('rubro'); if (sel) sel.value = rubroEditor(); }
       app.querySelectorAll('.letra b').forEach((b) => { b.textContent = e.nombre || 'Mi producto'; });
     }
     if (el.dataset.campo === 'precio' && e) {
@@ -761,6 +851,11 @@
 
   document.addEventListener('change', (ev) => {
     const el = ev.target;
+    if (el.dataset.campo === 'rubro' && estado.editor) {
+      estado.editor.rubro = el.value; estado.editor.rubroManual = true;
+      const a = document.getElementById('rubro-ayuda'); if (a) a.textContent = '(elegido por vos)';
+      return;
+    }
     if (el.dataset.accion === 'foto' && el.files && el.files[0]) { nuevaFoto(el.files[0]); el.value = ''; return; }
     if (el.dataset.accion === 'logo' && el.files && el.files[0]) { guardarLogo(el.files[0]).then(() => { if (vistaActual() === 'ajustes') app.innerHTML = vistaAjustes(); }); el.value = ''; return; }
     if (el.dataset.accion === 'red' && estado.capa) {
