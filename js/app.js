@@ -39,13 +39,20 @@
   };
 
   let temporizador = null;
-  function avisar(texto) {
+  function avisar(texto, boton) {
     const el = document.getElementById('aviso');
     el.textContent = texto;
+    el.classList.toggle('con-boton', !!boton);
+    if (boton) {
+      const b = document.createElement('button');
+      b.dataset.accion = boton.accion; b.textContent = boton.texto;
+      el.appendChild(b);
+    }
     el.classList.add('ver');
     clearTimeout(temporizador);
-    temporizador = setTimeout(() => el.classList.remove('ver'), 2800);
+    temporizador = setTimeout(() => el.classList.remove('ver'), boton ? 5000 : 2800);
   }
+  function ocultarAviso() { const el = document.getElementById('aviso'); el.classList.remove('ver'); }
 
   function copiar(texto) {
     try { if (navigator.clipboard) return navigator.clipboard.writeText(texto).then(() => true, () => false); } catch (e) { /* sin portapapeles */ }
@@ -242,6 +249,7 @@
   async function abrirEditor(p) {
     estado.editor = Object.assign({ fondo: 'desenfocado', letra: 'moderna', capas: {} }, p);
     estado.editor.herramienta = (p.nombre && Number(p.precio) > 0) ? null : 'datos';
+    estado.editor.firma = firmaEditor(estado.editor);
     estado.editor.capas = JSON.parse(JSON.stringify(p.capas || {}));
     if (!estado.editor.modoFondo) estado.editor.modoFondo = p.recortado ? 'diseno' : 'original';
     estado.editor.img = await cargarImagen(p.foto);
@@ -257,14 +265,20 @@
     ['letra', 'Letra', '<path d="M2.5 19 8 5l5.5 14M4.6 14h6.8"/><circle cx="18" cy="16" r="3"/><path d="M21 12.5V19"/>'],
     ['mas', 'Más', '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>']
   ];
-  const TITULO_PANEL = { datos: 'Nombre, precio y rubro', sticker: 'Sticker del precio', fondo: 'Fondo de la foto', letra: 'Letra del nombre', mas: 'Más opciones' };
+  const TITULO_PANEL = { datos: 'Nombre, precio y rubro', sticker: 'Sticker del precio', fondo: 'Fondo de la foto', letra: 'Letra del nombre', mas: 'Nombre del negocio y más' };
+
+  // Para saber si quedaron cambios sin guardar
+  function firmaEditor(e) {
+    return JSON.stringify([e.nombre || '', Number(e.precio) || 0, e.rubroManual ? e.rubro : '', e.estilo, e.fondo, e.letra, e.modoFondo, e.capas || {}]);
+  }
 
   function vistaEditor() {
     const e = estado.editor;
     const h = e.herramienta;
     return '<div class="editor2' + (h ? ' con-panel' : '') + '">' +
-      '<header class="ed-top"><a class="ed-volver" href="#inicio" aria-label="Volver al inicio"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>' +
+      '<header class="ed-top"><a class="ed-volver" href="#inicio" data-accion="salir-editor" aria-label="Volver al inicio"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>' +
       '<b>' + (e.id ? 'Editar publicación' : 'Nueva publicación') + '</b>' +
+      '<button class="btn ed-guardar" data-accion="guardar">Guardar</button>' +
       '<button class="btn btn-marca ed-compartir" data-accion="compartir">Compartir</button></header>' +
       '<div class="ed-escena" id="ed-escena">' +
       '<div class="ed-foto"><div class="vista-previa" style="' + proporcion(e) + '"><canvas id="lienzo" aria-label="Vista previa. Tocá el precio o el nombre para cambiarlos; arrastralos para moverlos."></canvas>' +
@@ -272,7 +286,10 @@
       '<span class="ed-ayuda" id="ed-ayuda">Tocá el precio o el nombre para cambiarlos. Arrastralos para moverlos.</span></div></div>' +
       '<nav class="ed-herramientas" aria-label="Herramientas">' + HERRAMIENTAS.map((t) =>
         '<button data-accion="herramienta" data-h="' + t[0] + '" aria-pressed="' + (h === t[0]) + '">' +
-        '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + t[2] + '</svg><span>' + t[1] + '</span></button>').join('') + '</nav>' +
+        '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + t[2] + '</svg><span>' + t[1] + '</span></button>').join('') +
+        '<button class="ed-reacomodar" data-accion="reacomodar" aria-label="Reacomodar: volver precio, nombre y logo a su lugar y tamaño">' +
+        '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg><span>Reacomodar</span></button>' +
+        '</nav>' +
       '</div>' +
       '<section class="ed-panel" id="ed-panel" aria-label="' + esc(h ? TITULO_PANEL[h] : '') + '"' + (h ? '' : ' hidden') + '>' +
       '<div class="ed-panel-cab"><b id="ed-panel-titulo">' + esc(h ? TITULO_PANEL[h] : '') + '</b><button class="btn btn-chico" data-accion="cerrar-panel">Listo</button></div>' +
@@ -330,8 +347,8 @@
   function panelMas() {
     const e = estado.editor;
     return '<div class="ed-mas">' +
-      '<button class="btn btn-ancho" data-accion="reacomodar">Volver a acomodar precio, nombre y logo</button>' +
       '<label class="interruptor"><input type="checkbox" data-ajuste="mostrarNegocio"' + (ajustes.mostrarNegocio ? ' checked' : '') + '><span>Poner el nombre del negocio' + (logo ? ' y el logo' : '') + '</span></label>' +
+      '<div id="tam-marca-caja"' + (ajustes.mostrarNegocio ? '' : ' hidden') + '>' + deslizador('marca', logo ? 'Tamaño del negocio y logo' : 'Tamaño del negocio') + '</div>' +
       '<a class="btn-texto" href="#ajustes">Cambiar nombre del negocio, logo o color →</a>' +
       (e.id ? '<button class="btn btn-peligro btn-ancho" data-accion="pedir-borrar" data-id="' + esc(e.id) + '">' + ICONO_TACHO + ' Eliminar este producto</button>' : '') +
       '</div>';
@@ -466,9 +483,10 @@
       if (!arrastre) {
         const k = elementoEn(p);
         if (!k) { toqueVacio = { id: ev.pointerId, x: ev.clientX, y: ev.clientY }; return; }
+        const antes = e.capas[k] ? Object.assign({}, e.capas[k]) : null;
         const usada = (e.capasUsadas && e.capasUsadas[k]) || { x: 0.5, y: 0.5, escala: 1 };
         e.capas[k] = Object.assign({}, usada, e.capas[k] && e.capas[k].escala ? { escala: e.capas[k].escala } : {});
-        arrastre = { clave: k, inicio: p, x0: e.capas[k].x, y0: e.capas[k].y, escala0: e.capas[k].escala || 1, dist0: 0, cx: ev.clientX, cy: ev.clientY, movio: false };
+        arrastre = { clave: k, inicio: p, x0: e.capas[k].x, y0: e.capas[k].y, escala0: e.capas[k].escala || 1, dist0: 0, cx: ev.clientX, cy: ev.clientY, movio: false, antes: antes };
         lienzo.classList.add('arrastrando');
       }
       dedos.set(ev.pointerId, p);
@@ -507,6 +525,8 @@
       if (dedos.size === 0 && arrastre && !arrastre.movio) {
         // fue un toque: abrir lo que corresponde
         const k = arrastre.clave;
+        const ed = estado.editor;
+        if (arrastre.antes) ed.capas[k] = arrastre.antes; else delete ed.capas[k];
         arrastre = null;
         lienzo.classList.remove('arrastrando');
         if (ev.type === 'pointerup') {
@@ -611,7 +631,7 @@
       rubro: rubroEditor(), rubroManual: !!e.rubroManual
     };
     await ALMACEN.guardar(p);
-    e.id = p.id; e.fecha = p.fecha;
+    e.id = p.id; e.fecha = p.fecha; e.firma = firmaEditor(e);
     ajustes.estilo = e.estilo; ajustes.fondo = e.fondo; ajustes.letra = e.letra; guardarAjustes();
     estado.productos = await ALMACEN.todos();
     return p;
@@ -630,11 +650,25 @@
     return p.nombre + '\n' + precio + cod + '\n\nPedidos por ' + wa + '\n' + ajustes.negocio + '\n\n' + tags;
   }
 
-  async function abrirCompartir() {
+  function faltanDatos() {
     const e = estado.editor;
     e.nombre = (e.nombre || '').trim();
-    if (!e.nombre) { avisar('Escribí el nombre del producto'); abrirHerramienta('datos', 'nombre'); return; }
-    if (!(Number(e.precio) > 0)) { avisar('Escribí el precio'); abrirHerramienta('datos', 'precio'); return; }
+    if (!e.nombre) { avisar('Escribí el nombre del producto'); abrirHerramienta('datos', 'nombre'); return true; }
+    if (!(Number(e.precio) > 0)) { avisar('Escribí el precio'); abrirHerramienta('datos', 'precio'); return true; }
+    return false;
+  }
+
+  async function guardarSolo() {
+    if (faltanDatos()) return false;
+    const nuevo = !estado.editor.id;
+    try { await guardarEditor(); } catch (err) { avisar('No se pudo guardar. Probá de nuevo.'); return false; }
+    avisar(nuevo ? 'Guardado en tus productos y en tu catálogo' : 'Cambios guardados');
+    return true;
+  }
+
+  async function abrirCompartir() {
+    const e = estado.editor;
+    if (faltanDatos()) return;
     let p;
     try { p = await guardarEditor(); } catch (err) { avisar('No se pudo guardar. Probá de nuevo.'); return; }
     // La imagen se arma antes, así "Compartir" abre al instante
@@ -666,6 +700,13 @@
         '<p class="detalle">Se borra de "Tus productos" y de tu catálogo. No se puede deshacer.</p>';
       pie = '<button class="btn btn-peligro-lleno btn-ancho" data-accion="confirmar-borrar">Sí, eliminar</button>' +
         '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Cancelar</button>';
+    }
+    else if (c.tipo === 'salir') {
+      titulo = '¿Guardar los cambios?';
+      cuerpo = '<p class="detalle">' + (estado.editor && estado.editor.id ? 'Hiciste cambios en este producto que todavía no guardaste.' : 'Este producto todavía no está guardado en tus productos ni en tu catálogo.') + '</p>';
+      pie = '<button class="btn btn-marca btn-ancho" data-accion="guardar-y-salir">Guardar</button>' +
+        '<button class="btn btn-claro btn-ancho" data-accion="salir-sin-guardar">Salir sin guardar</button>' +
+        '<button class="btn-texto" data-accion="cerrar">Seguir editando</button>';
     }
     else if (c.paso < 0) {
       titulo = '¿Dónde lo querés subir?';
@@ -861,11 +902,28 @@
     compartir: () => abrirCompartir(),
     'modo-fondo': (el) => cambiarModoFondo(el.dataset.modo),
     reacomodar: () => {
-      estado.editor.capas = {};
-      ['precio', 'nombre'].forEach(sincronizarDeslizador);
+      const e = estado.editor;
+      e.capasAntes = JSON.parse(JSON.stringify(e.capas || {}));
+      e.capas = {};
+      ['precio', 'nombre', 'marca'].forEach(sincronizarDeslizador);
       dibujarVista();
-      avisar('Listo, volvió todo a su lugar');
+      avisar('Volvió todo a su lugar', Object.keys(e.capasAntes).length ? { texto: 'Deshacer', accion: 'deshacer-reacomodar' } : null);
     },
+    'deshacer-reacomodar': () => {
+      const e = estado.editor;
+      if (!e || !e.capasAntes) return;
+      e.capas = e.capasAntes; e.capasAntes = null;
+      ['precio', 'nombre', 'marca'].forEach(sincronizarDeslizador);
+      dibujarVista();
+      ocultarAviso();
+    },
+    guardar: () => { guardarSolo(); },
+    'salir-editor': (el, ev) => {
+      const e = estado.editor;
+      if (e && e.firma !== firmaEditor(e)) { ev.preventDefault(); abrirCapa({ tipo: 'salir' }); }
+    },
+    'guardar-y-salir': async () => { cerrarCapa(); if (await guardarSolo()) location.hash = 'inicio'; },
+    'salir-sin-guardar': () => { cerrarCapa(); location.hash = 'inicio'; },
     herramienta: (el) => abrirHerramienta(estado.editor.herramienta === el.dataset.h ? null : el.dataset.h),
     'cerrar-panel': () => { if (document.activeElement) document.activeElement.blur(); abrirHerramienta(null); },
     fondo: (el) => {
@@ -965,7 +1023,7 @@
       b.textContent = n ? 'Empezar (' + n + (n === 1 ? ' red)' : ' redes)') : 'Elegí al menos una red';
       return;
     }
-    if (el.dataset.ajuste === 'mostrarNegocio' || el.dataset.ajuste === 'mostrarCodigo') { ajustes[el.dataset.ajuste] = el.checked; guardarAjustes(); if (vistaActual() === 'editor') dibujarVista(); }
+    if (el.dataset.ajuste === 'mostrarNegocio' || el.dataset.ajuste === 'mostrarCodigo') { ajustes[el.dataset.ajuste] = el.checked; guardarAjustes(); if (vistaActual() === 'editor') { dibujarVista(); const t = document.getElementById('tam-marca-caja'); if (t) t.hidden = !ajustes.mostrarNegocio; } }
     if (el.dataset.ajuste === 'negocio' && !el.value.trim()) { ajustes.negocio = AJUSTES_BASE.negocio; el.value = ajustes.negocio; guardarAjustes(); }
   });
 
