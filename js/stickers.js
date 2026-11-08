@@ -297,111 +297,115 @@ window.STICKERS = (function () {
 
   /* ---------- composición completa ---------- */
   /*
-    datos = { foto (Image), nombre, precio, codigo }
-    op = { estilo, posicion, formato, negocio, mostrarNegocio, color, fondo, letra, logo (Image) }
+    La imagen sale del MISMO tamaño (proporción) que la foto original:
+    la foto ocupa todo, sin márgenes. El lado más corto mide 1080 px.
+
+    datos = { foto (Image), recorte (Image, opcional), nombre, precio, codigo }
+    op = { estilo, posicion, negocio, mostrarNegocio, color, fondo, letra, logo (Image), recortado }
   */
+  function tamanoSalida(img) {
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    let W, H;
+    if (iw >= ih) { H = 1080; W = Math.round(1080 * iw / ih); }
+    else { W = 1080; H = Math.round(1080 * ih / iw); }
+    // límites para fotos muy alargadas
+    const s = Math.min(1, 2160 / W, 2700 / H);
+    return { W: Math.round(W * s), H: Math.round(H * s) };
+  }
+
   function componer(datos, op) {
-    const estado = op.formato !== 'feed';
-    const W = 1080, H = estado ? 1920 : 1350;
+    const img = datos.foto;
+    const { W, H } = tamanoSalida(img);
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const ctx = c.getContext('2d');
-    const img = datos.foto;
     const color = op.color || '#1C5BB8';
     const estilo = op.estilo || 'estrella';
     const pos = POSICIONES.indexOf(op.posicion) >= 0 ? op.posicion : 'abajo-der';
     const izquierda = pos.indexOf('izq') > 0;
-
-    // Fondo elegido (por defecto, la misma foto desenfocada)
-    dibujarFondo(ctx, W, H, op.fondo, img, color);
+    const abajo = pos.indexOf('abajo') === 0;
     const fuenteNombre = letra(op.letra);
+    const u = Math.min(W, H) / 1080;              // escala: todo se mide en "u"
+    const alargada = H / W > 1.45;                 // tipo estado / historia
+    const mx = Math.round(W * 0.05);               // margen a los costados
+    const myArr = Math.round(alargada ? H * 0.1 : H * 0.05);   // zona segura arriba
+    const myAba = Math.round(alargada ? H * 0.11 : H * 0.05);  // zona segura abajo
 
-    const m = 40, ancho = W - m * 2;
-    const top = estado ? 200 : 40;
-    const maxAlto = estado ? 1060 : 930; // deja lugar para nombre y logo
+    // 1) Foto o producto recortado sobre el fondo elegido
     const recorte = op.recortado && datos.recorte;
-    let alto;
     if (recorte) {
-      // Producto recortado, grande y centrado, con sombra sobre el fondo
+      dibujarFondo(ctx, W, H, op.fondo, img, color);
       const rw = recorte.naturalWidth || recorte.width, rh = recorte.naturalHeight || recorte.height;
-      const s = Math.min((ancho - 40) / rw, (maxAlto - 30) / rh);
+      const s = Math.min(W * 0.8 / rw, H * 0.66 / rh);
       const pw = rw * s, ph = rh * s;
-      const px = (W - pw) / 2, py = top + (maxAlto - ph) / 2;
+      const px = (W - pw) / 2, py = (H - ph) / 2 + H * 0.02;
       const piso = py + ph;
       const g = ctx.createRadialGradient(W / 2, piso, 10, W / 2, piso, pw * 0.55);
       g.addColorStop(0, 'rgba(0,0,0,.32)'); g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.save(); ctx.translate(W / 2, piso); ctx.scale(1, 0.13); ctx.translate(-W / 2, -piso);
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(W / 2, piso, pw * 0.55, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = 36; ctx.shadowOffsetY = 18;
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = 36 * u; ctx.shadowOffsetY = 18 * u;
       ctx.drawImage(recorte, px, py, pw, ph); ctx.restore();
-      alto = maxAlto;
-      ctx.save(); ctx.beginPath(); ctx.rect(m, top, ancho, alto); ctx.clip();
     } else {
-      // Foto entera en una tarjeta
-      const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-      alto = Math.min(maxAlto, Math.round(ancho * ih / iw));
-      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.32)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12;
-      ctx.beginPath(); ctx.roundRect(m, top, ancho, alto, 34); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
-      ctx.save(); ctx.beginPath(); ctx.roundRect(m, top, ancho, alto, 34); ctx.clip();
-      cubrir(ctx, img, m, top, ancho, alto);
+      ctx.drawImage(img, 0, 0, W, H);
     }
 
     const precio = pesos(datos.precio);
     const codigo = datos.codigo ? 'Cód. ' + datos.codigo : '';
+    const nombre = fuenteNombre.mayus ? String(datos.nombre || '').toUpperCase() : String(datos.nombre || '');
+    const familiaN = fuenteNombre.familia + ', ' + DISPLAY;
 
-    // Estilo "banda": franja con nombre y precio sobre la foto
+    // 2) Logo y/o nombre del negocio, arriba
+    const altoMarca = Math.round((op.logo ? 130 : 84) * u);
+    dibujarMarca(ctx, op, mx, myArr, altoMarca, false, W);
+
+    // 3) Estilo "banda": franja abajo con nombre y precio
     if (estilo === 'banda') {
-      const bh = estado ? 330 : 280;
-      const g = ctx.createLinearGradient(0, top + alto - bh - 120, 0, top + alto);
-      g.addColorStop(0, 'rgba(10,10,20,0)'); g.addColorStop(0.35, 'rgba(10,10,20,.78)'); g.addColorStop(1, 'rgba(10,10,20,.92)');
-      ctx.fillStyle = g; ctx.fillRect(m, top + alto - bh - 120, ancho, bh + 120);
-      ctx.fillStyle = '#fff';
-      const pxN = Math.round((estado ? 56 : 48) * fuenteNombre.escala);
-      const familiaN = fuenteNombre.familia + ', ' + DISPLAY;
+      const pxN = Math.round(56 * u * fuenteNombre.escala);
       ctx.font = fuente(fuenteNombre.peso, pxN, familiaN);
-      const ls = lineas(ctx, fuenteNombre.mayus ? datos.nombre.toUpperCase() : datos.nombre, ancho - 80, 2);
-      const pxP = ajustar(ctx, precio, 800, DISPLAY, ancho - 80, estado ? 150 : 128);
-      let y = top + alto - 44 - (codigo ? 52 : 0);
-      if (codigo) { ctx.font = fuente(700, 36, CUERPO); ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillText(codigo, m + 40, top + alto - 44); }
-      ctx.font = fuente(800, pxP, DISPLAY); ctx.fillStyle = '#FFD23F'; ctx.fillText(precio, m + 36, y);
+      const ls = nombre ? lineas(ctx, nombre, W - mx * 2, 2) : [];
+      const pxP = ajustar(ctx, precio, 800, DISPLAY, W - mx * 2, 150 * u);
+      const altoBanda = myAba + pxP * 1.05 + ls.length * pxN * 1.12 + (codigo ? 50 * u : 0) + 70 * u;
+      const g = ctx.createLinearGradient(0, H - altoBanda - 80 * u, 0, H);
+      g.addColorStop(0, 'rgba(10,10,20,0)'); g.addColorStop(0.3, 'rgba(10,10,20,.75)'); g.addColorStop(1, 'rgba(10,10,20,.92)');
+      ctx.fillStyle = g; ctx.fillRect(0, H - altoBanda - 80 * u, W, altoBanda + 80 * u);
+      let y = H - myAba;
+      if (codigo) { ctx.font = fuente(700, 36 * u, CUERPO); ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillText(codigo, mx, y); y -= 50 * u; }
+      ctx.font = fuente(800, pxP, DISPLAY); ctx.fillStyle = '#FFD23F'; ctx.fillText(precio, mx - 4 * u, y);
       y -= pxP * 0.95;
       ctx.fillStyle = '#fff'; ctx.font = fuente(fuenteNombre.peso, pxN, familiaN);
-      for (let i = ls.length - 1; i >= 0; i--) { ctx.fillText(ls[i], m + 40, y); y -= pxN * 1.12; }
+      for (let i = ls.length - 1; i >= 0; i--) { ctx.fillText(ls[i], mx, y); y -= pxN * 1.12; }
+      return c;
     }
-    ctx.restore();
 
-    // Nombre en etiqueta blanca (todos los estilos menos "banda")
-    let y = top + alto + (estado ? 56 : 30);
-    if (estilo !== 'banda' && datos.nombre) {
-      const px = Math.round((estado ? 54 : 46) * fuenteNombre.escala);
-      ctx.font = fuente(fuenteNombre.peso, px, fuenteNombre.familia + ', ' + DISPLAY);
-      const ls = lineas(ctx, fuenteNombre.mayus ? datos.nombre.toUpperCase() : datos.nombre, estado ? 660 : 600, 2);
+    // 4) Sticker de precio en la esquina elegida
+    const info = ESTILOS.find((e) => e.id === estilo) || ESTILOS[0];
+    const r = Math.round(215 * u);
+    const medio = info.ancho * r;
+    let cx = izquierda ? mx + medio * 0.95 : W - mx - medio * 0.95;
+    let cy = abajo ? H - myAba - r * 0.95 : myArr + altoMarca + r * 1.05;
+    cx = Math.max(medio + 10, Math.min(W - medio - 10, cx));
+    cy = Math.max(r + 10, Math.min(H - r - 10, cy));
+
+    // 5) Nombre del producto en etiqueta blanca, abajo del lado contrario al sticker
+    if (nombre) {
+      const px = Math.round(52 * u * fuenteNombre.escala);
+      const anchoMax = abajo ? W - mx * 2 - medio * 2 - 20 * u : W - mx * 2;
+      ctx.font = fuente(fuenteNombre.peso, px, familiaN);
+      const ls = lineas(ctx, nombre, Math.max(W * 0.38, anchoMax - px * 1.2), 2);
       const altoCaja = ls.length * px * 1.1 + px * 0.95;
       const anchoCaja = Math.max.apply(null, ls.map((l) => ctx.measureText(l).width)) + px * 1.2;
-      const x = izquierda ? W - m - anchoCaja : m;
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(x, y, anchoCaja, altoCaja, 24); ctx.fill();
+      const x = abajo ? (izquierda ? W - mx - anchoCaja : mx) : mx;
+      const y = H - myAba - altoCaja;
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 18 * u; ctx.shadowOffsetY = 4 * u;
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(x, y, anchoCaja, altoCaja, 24 * u); ctx.fill(); ctx.restore();
       ctx.fillStyle = TINTA;
       ls.forEach((l, i) => ctx.fillText(l, x + px * 0.6, y + px * 0.42 + px * (i + 1) * 1.04));
-      y += altoCaja + 18;
     }
 
-    // Logo y/o nombre del negocio
-    const altoMarca = op.logo ? (estado ? 130 : 104) : (estado ? 76 : 66);
-    dibujarMarca(ctx, op, m, Math.min(y, H - (estado ? 270 : 30) - altoMarca), altoMarca, izquierda && estilo !== 'banda', W);
-
-    // Sticker de precio en la esquina elegida
-    if (estilo !== 'banda') {
-      const info = ESTILOS.find((e) => e.id === estilo) || ESTILOS[0];
-      const r = estado ? 225 : 195;
-      const medio = info.ancho * r;
-      let cx = izquierda ? m + medio * 0.82 : W - m - medio * 0.82;
-      let cy = pos.indexOf('abajo') === 0 ? top + alto - r * 0.3 : top + r * 0.78;
-      cx = Math.max(medio + 16, Math.min(W - medio - 16, cx));
-      cy = Math.max(r + 16, Math.min(H - r - 16, cy));
-      ctx.save(); ctx.translate(cx, cy);
-      dibujantes[estilo](ctx, r, { precio: precio, abajo: codigo }, { color: color });
-      ctx.restore();
-    }
+    ctx.save(); ctx.translate(cx, cy);
+    dibujantes[estilo](ctx, r, { precio: precio, abajo: codigo }, { color: color });
+    ctx.restore();
     return c;
   }
 
@@ -448,7 +452,7 @@ window.STICKERS = (function () {
   }
 
   function aBlob(canvas) {
-    return new Promise((ok, mal) => canvas.toBlob((b) => (b ? ok(b) : mal(new Error('sin imagen'))), 'image/jpeg', 0.9));
+    return new Promise((ok, mal) => canvas.toBlob((b) => (b ? ok(b) : mal(new Error('sin imagen'))), 'image/jpeg', 0.92));
   }
 
   let fuentesListas = null;
@@ -462,5 +466,5 @@ window.STICKERS = (function () {
     return fuentesListas;
   }
 
-  return { ESTILOS: ESTILOS, POSICIONES: POSICIONES, LETRAS: LETRAS, FONDOS: FONDOS, componer: componer, miniatura: miniatura, miniaturaFondo: miniaturaFondo, aBlob: aBlob, prepararFuentes: prepararFuentes, pesos: pesos };
+  return { ESTILOS: ESTILOS, POSICIONES: POSICIONES, LETRAS: LETRAS, FONDOS: FONDOS, componer: componer, tamanoSalida: tamanoSalida, miniatura: miniatura, miniaturaFondo: miniaturaFondo, aBlob: aBlob, prepararFuentes: prepararFuentes, pesos: pesos };
 })();

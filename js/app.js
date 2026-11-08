@@ -19,12 +19,12 @@
   const COLORES = ['#1C5BB8', '#A3195B', '#12715F', '#C2410C', '#5B3FA6', '#15161D'];
 
   const REDES = [
-    { id: 'estado', nombre: 'Estado de WhatsApp', formato: 'estado', app: 'WhatsApp', ayuda: 'En el menú elegí WhatsApp y después "Mi estado".' },
-    { id: 'ig-historia', nombre: 'Historia de Instagram', formato: 'estado', app: 'Instagram', ayuda: 'Elegí Instagram y después "Historia".' },
-    { id: 'ig-post', nombre: 'Publicación de Instagram', formato: 'feed', app: 'Instagram', ayuda: 'Elegí Instagram y después "Feed". El texto ya está copiado: pegalo en la descripción.' },
-    { id: 'facebook', nombre: 'Facebook', formato: 'feed', app: 'Facebook', ayuda: 'Elegí Facebook. El texto ya está copiado: pegalo al publicar.' },
-    { id: 'marketplace', nombre: 'Marketplace', formato: 'feed', app: 'la galería', ayuda: 'Guardá la imagen y abrí Marketplace → Vender. Título, precio y descripción ya están copiados.' },
-    { id: 'tiktok', nombre: 'TikTok', formato: 'estado', app: 'TikTok', ayuda: 'Elegí TikTok. El texto ya está copiado: pegalo en la descripción.' }
+    { id: 'estado', nombre: 'Estado de WhatsApp', app: 'WhatsApp', ayuda: 'En el menú elegí WhatsApp y después "Mi estado".' },
+    { id: 'ig-historia', nombre: 'Historia de Instagram', app: 'Instagram', ayuda: 'Elegí Instagram y después "Historia".' },
+    { id: 'ig-post', nombre: 'Publicación de Instagram', app: 'Instagram', ayuda: 'Elegí Instagram y después "Feed" (si te pide recortar, ajustá el encuadre). El texto ya está copiado: pegalo en la descripción.' },
+    { id: 'facebook', nombre: 'Facebook', app: 'Facebook', ayuda: 'Elegí Facebook. El texto ya está copiado: pegalo al publicar.' },
+    { id: 'marketplace', nombre: 'Marketplace', app: 'la galería', ayuda: 'Guardá la imagen y abrí Marketplace → Vender. Título, precio y descripción ya están copiados.' },
+    { id: 'tiktok', nombre: 'TikTok', app: 'TikTok', ayuda: 'Elegí TikTok. El texto ya está copiado: pegalo en la descripción.' }
   ];
 
   /* ---------------- Utilidades ---------------- */
@@ -60,13 +60,13 @@
     const url = URL.createObjectURL(archivo);
     try {
       const img = await cargarImagen(url);
-      const max = 1440;
+      const max = 2048;
       const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
       const c = document.createElement('canvas');
       c.width = Math.round(img.naturalWidth * s);
       c.height = Math.round(img.naturalHeight * s);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      return c.toDataURL('image/jpeg', 0.86);
+      return c.toDataURL('image/jpeg', 0.88);
     } finally {
       URL.revokeObjectURL(url);
     }
@@ -143,14 +143,19 @@
     window.scrollTo(0, 0);
   }
 
+  const ICONO_TACHO = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>';
+
   /* ================= Inicio ================= */
   function vistaInicio() {
     const ps = estado.productos;
     const grilla = ps.length
       ? '<div class="grilla">' + ps.map((p) =>
-        '<button class="miniatura" data-accion="abrir" data-id="' + esc(p.id) + '" aria-label="' + esc(p.nombre + ', ' + pesos(p.precio)) + '">' +
+        '<div class="item">' +
+        '<button class="miniatura" data-accion="abrir" data-id="' + esc(p.id) + '" aria-label="' + esc('Editar ' + p.nombre + ', ' + pesos(p.precio)) + '">' +
         '<img src="' + p.foto + '" alt="" loading="lazy"><span class="precio-chip">' + esc(pesos(p.precio)) + '</span>' +
-        '<span class="mini-nombre">' + esc(p.nombre) + '</span></button>').join('') + '</div>'
+        '<span class="mini-nombre">' + esc(p.nombre) + '</span></button>' +
+        '<button class="borrar-mini" data-accion="pedir-borrar" data-id="' + esc(p.id) + '" aria-label="' + esc('Eliminar ' + p.nombre) + '">' + ICONO_TACHO + '</button>' +
+        '</div>').join('') + '</div>'
       : '<p class="vacio">Todavía no sacaste fotos. Tocá "Sacar foto" para empezar.</p>';
 
     return '<header class="barra-top"><div class="marca-app"><i>M</i>Mostrador</div>' +
@@ -166,7 +171,7 @@
       '</section>' +
       '<section class="seccion">' +
       '<div class="fila"><h2>Tus productos</h2><a class="btn-texto" href="#catalogo">Ver mi catálogo →</a></div>' +
-      '<p class="detalle">Tocá uno para cambiarle el precio o el sticker y volver a compartirlo.</p>' +
+      '<p class="detalle">Tocá un producto para cambiarlo y volver a compartirlo. Con el tacho lo eliminás.</p>' +
       grilla + '</section>' +
       (ALMACEN.soloMemoria ? '<p class="nota">Este navegador no deja guardar: tus fotos se borran al cerrar la página.</p>' : '') +
       '</main>';
@@ -183,7 +188,7 @@
   }
 
   async function abrirEditor(p) {
-    estado.editor = Object.assign({ formatoVista: 'estado', pestana: 'sticker', fondo: 'desenfocado', letra: 'moderna' }, p);
+    estado.editor = Object.assign({ pestana: 'sticker', fondo: 'desenfocado', letra: 'moderna' }, p);
     estado.editor.img = await cargarImagen(p.foto);
     estado.editor.imgRecorte = p.recorte ? await cargarImagen(p.recorte) : null;
     if (location.hash === '#editor') navegar(); else location.hash = 'editor';
@@ -195,12 +200,9 @@
     const pestanas = [['sticker', 'Sticker'], ['fondo', 'Fondo'], ['letra', 'Letra']];
 
     return '<header class="barra-top"><a class="btn-texto" href="#inicio">← Volver</a><b>' + (e.id ? 'Editar publicación' : 'Nueva publicación') + '</b>' +
-      (e.id ? '<button class="btn-texto peligro" data-accion="borrar">' + (e.confirmarBorrar ? '¿Seguro?' : 'Borrar') + '</button>' : '<span></span>') + '</header>' +
+      '<span></span></header>' +
       '<main class="pagina editor">' +
-      '<div class="vista-previa ' + e.formatoVista + '"><canvas id="lienzo" aria-label="Vista previa de la imagen"></canvas><span class="trabajando-aviso" aria-live="polite">Recortando el producto…<small>La primera vez puede tardar unos segundos</small></span></div>' +
-      '<div class="segmentos" role="group" aria-label="Ver como">' +
-      '<button data-accion="formato-vista" data-formato="estado" aria-pressed="' + (e.formatoVista === 'estado') + '">Estado / historia</button>' +
-      '<button data-accion="formato-vista" data-formato="feed" aria-pressed="' + (e.formatoVista === 'feed') + '">Publicación</button></div>' +
+      '<div class="vista-previa" style="' + proporcion(e) + '"><canvas id="lienzo" aria-label="Vista previa de la imagen"></canvas><span class="trabajando-aviso" aria-live="polite">Recortando el producto…<small>La primera vez puede tardar unos segundos</small></span></div>' +
       '<div class="campos">' +
       '<div class="campo"><label for="nombre">Nombre del producto</label><input id="nombre" data-campo="nombre" value="' + esc(e.nombre) + '" placeholder="Ej: Vasos de vidrio x 6" autocomplete="off" enterkeyhint="next"></div>' +
       '<div class="campo"><label for="precio">Precio</label><div class="con-signo"><span>$</span><input id="precio" data-campo="precio" inputmode="numeric" value="' + esc(e.precio ? Number(e.precio).toLocaleString('es-AR') : '') + '" placeholder="5.000" autocomplete="off" enterkeyhint="done"></div></div>' +
@@ -208,8 +210,14 @@
       '<div class="pestanas" role="tablist">' + pestanas.map((t) =>
         '<button role="tab" data-accion="pestana" data-pestana="' + t[0] + '" aria-selected="' + (e.pestana === t[0]) + '">' + t[1] + '</button>').join('') + '</div>' +
       '<div id="panel-opciones">' + panelOpciones() + '</div>' +
+      (e.id ? '<button class="btn btn-peligro btn-ancho" data-accion="pedir-borrar" data-id="' + esc(e.id) + '">' + ICONO_TACHO + ' Eliminar este producto</button>' : '') +
       '</main>' +
       '<div class="barra-abajo"><button class="btn btn-marca btn-ancho" data-accion="compartir">Compartir</button></div>';
+  }
+
+  function proporcion(e) {
+    const t = S.tamanoSalida(e.img);
+    return 'aspect-ratio:' + t.W + ' / ' + t.H + ';--r:' + (t.W / t.H).toFixed(4);
   }
 
   function panelOpciones() {
@@ -233,9 +241,9 @@
         '<canvas width="240" height="240" data-mini="' + st.id + '" aria-hidden="true"></canvas><span>' + esc(st.nombre) + '</span></button>').join('') + '</div>';
   }
 
-  async function recortarProducto() {
+  async function recortarProducto(conservarFondo) {
     const e = estado.editor;
-    if (e.recorte && e.imgRecorte) { e.recortado = true; if (e.fondo === 'desenfocado') e.fondo = 'estudio'; refrescarPanel(); dibujarVista(); return; }
+    if (e.recorte && e.imgRecorte) { e.recortado = true; if (!conservarFondo && e.fondo === 'desenfocado') e.fondo = 'estudio'; refrescarPanel(); dibujarVista(); return; }
     if (!window.RECORTE || !RECORTE.disponible()) { avisar('Este celular no permite recortar automáticamente.'); return; }
     const caja = app.querySelector('.vista-previa');
     if (caja) caja.classList.add('trabajando');
@@ -248,7 +256,7 @@
       e.recorte = r.imagen.toDataURL('image/png');
       e.imgRecorte = await cargarImagen(e.recorte);
       e.recortado = true;
-      if (e.fondo === 'desenfocado') e.fondo = 'estudio';
+      if (!conservarFondo && e.fondo === 'desenfocado') e.fondo = 'estudio';
       avisar('¡Listo! Ahora elegí el fondo que más te guste.');
     } catch (err) {
       const msj = String(err && err.message);
@@ -279,18 +287,18 @@
     const e = estado.editor;
     return { foto: e.img, recorte: e.imgRecorte, nombre: e.nombre || 'Nombre del producto', precio: Number(e.precio) || 0, codigo: ajustes.mostrarCodigo ? e.codigo : '' };
   }
-  function opcionesEditor(formato) {
+  function opcionesEditor() {
     const e = estado.editor;
-    return { estilo: e.estilo, posicion: e.posicion, formato: formato, negocio: ajustes.negocio, mostrarNegocio: ajustes.mostrarNegocio, color: ajustes.color, fondo: e.fondo, letra: e.letra, logo: logo, recortado: !!(e.recortado && e.imgRecorte) };
+    return { estilo: e.estilo, posicion: e.posicion, negocio: ajustes.negocio, mostrarNegocio: ajustes.mostrarNegocio, color: ajustes.color, fondo: e.fondo, letra: e.letra, logo: logo, recortado: !!(e.recortado && e.imgRecorte) };
   }
 
   function dibujarVista() {
     const e = estado.editor;
     const lienzo = document.getElementById('lienzo');
     if (!e || !lienzo) return;
-    const imagen = S.componer(datosEditor(), opcionesEditor(e.formatoVista));
-    lienzo.width = imagen.width / 2;
-    lienzo.height = imagen.height / 2;
+    const imagen = S.componer(datosEditor(), opcionesEditor());
+    lienzo.width = Math.round(imagen.width / 2);
+    lienzo.height = Math.round(imagen.height / 2);
     lienzo.getContext('2d').drawImage(imagen, 0, 0, lienzo.width, lienzo.height);
   }
 
@@ -347,10 +355,9 @@
     if (!(Number(e.precio) > 0)) { avisar('Escribí el precio'); const c = document.getElementById('precio'); if (c) c.focus(); return; }
     let p;
     try { p = await guardarEditor(); } catch (err) { avisar('No se pudo guardar. Probá de nuevo.'); return; }
-    // Se arman las dos imágenes antes, así "Compartir" abre al instante
-    const imagenes = {};
-    ['estado', 'feed'].forEach((f) => { imagenes[f] = S.aBlob(S.componer(datosEditor(), opcionesEditor(f))); });
-    abrirCapa({ tipo: 'redes', producto: p, imagenes: imagenes, elegidas: ajustes.redes.slice(), paso: -1 });
+    // La imagen se arma antes, así "Compartir" abre al instante
+    const imagen = S.aBlob(S.componer(datosEditor(), opcionesEditor()));
+    abrirCapa({ tipo: 'redes', producto: p, imagen: imagen, elegidas: ajustes.redes.slice(), paso: -1 });
   }
 
   function abrirCapa(datos) {
@@ -371,6 +378,13 @@
     if (!c) return;
     let titulo, cuerpo, pie;
     if (c.tipo === 'pedido') { const h = hojaPedido(); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
+    else if (c.tipo === 'borrar') {
+      titulo = '¿Eliminar este producto?';
+      cuerpo = '<div class="confirmar-borrar"><img src="' + c.producto.foto + '" alt=""><div><b>' + esc(c.producto.nombre || 'Sin nombre') + '</b><span>' + esc(pesos(c.producto.precio)) + '</span></div></div>' +
+        '<p class="detalle">Se borra de "Tus productos" y de tu catálogo. No se puede deshacer.</p>';
+      pie = '<button class="btn btn-peligro-lleno btn-ancho" data-accion="confirmar-borrar">Sí, eliminar</button>' +
+        '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Cancelar</button>';
+    }
     else if (c.paso < 0) {
       titulo = '¿Dónde lo querés subir?';
       cuerpo = '<div class="redes">' + REDES.map((r) =>
@@ -381,7 +395,7 @@
     } else if (c.paso < c.cola.length) {
       const r = REDES.find((x) => x.id === c.cola[c.paso]);
       titulo = (c.paso + 1) + ' de ' + c.cola.length + ' · ' + r.nombre;
-      cuerpo = '<div class="paso-red"><img id="img-red" alt="Imagen para ' + esc(r.nombre) + '" class="' + r.formato + '">' +
+      cuerpo = '<div class="paso-red"><img id="img-red" alt="Imagen para ' + esc(r.nombre) + '">' +
         '<p>' + esc(r.ayuda) + '</p>' +
         (window.claude && !puedeCompartirPrueba() ? '<p class="nota aviso-claude">Dentro de Claude la imagen se descarga. Con la app en tu propio link se abre el menú Compartir del celular.</p>' : '') +
         '<pre class="texto-red">' + esc(textoRed(c.producto, r.id)) + '</pre></div>';
@@ -402,8 +416,7 @@
       '<div class="hoja-cuerpo">' + cuerpo + '</div><div class="hoja-pie">' + pie + '</div></section>';
 
     if (c.tipo === 'redes' && c.paso >= 0 && c.paso < c.cola.length) {
-      const r = REDES.find((x) => x.id === c.cola[c.paso]);
-      c.imagenes[r.formato].then((b) => {
+      c.imagen.then((b) => {
         const img = document.getElementById('img-red');
         if (img) img.src = URL.createObjectURL(b);
       });
@@ -430,8 +443,8 @@
     const r = REDES.find((x) => x.id === c.cola[c.paso]);
     const texto = textoRed(c.producto, r.id);
     copiar(texto); // queda copiado para pegar en la red
-    const blob = await c.imagenes[r.formato];
-    const nombre = (normalizar(c.producto.nombre).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'producto') + '-' + r.formato + '.jpg';
+    const blob = await c.imagen;
+    const nombre = (normalizar(c.producto.nombre).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'producto') + '.jpg';
     const archivo = new File([blob], nombre, { type: 'image/jpeg' });
 
     if (puedeCompartir(archivo)) {
@@ -533,20 +546,19 @@
       e.posicion = S.POSICIONES[(i + 1) % S.POSICIONES.length];
       dibujarVista();
     },
-    'formato-vista': (el) => {
-      estado.editor.formatoVista = el.dataset.formato;
-      app.querySelectorAll('[data-accion="formato-vista"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.formato === estado.editor.formatoVista)));
-      const caja = app.querySelector('.vista-previa'); caja.classList.remove('estado', 'feed'); caja.classList.add(estado.editor.formatoVista);
-      dibujarVista();
+    'pedir-borrar': (el) => {
+      const p = estado.productos.find((x) => x.id === el.dataset.id);
+      if (p) abrirCapa({ tipo: 'borrar', producto: p });
     },
-    borrar: async () => {
-      const e = estado.editor;
-      if (!e.confirmarBorrar) { e.confirmarBorrar = true; app.querySelector('[data-accion="borrar"]').textContent = '¿Seguro?'; return; }
-      await ALMACEN.borrar(e.id);
+    'confirmar-borrar': async () => {
+      const p = estado.capa && estado.capa.producto;
+      if (!p) return;
+      await ALMACEN.borrar(p.id);
       estado.productos = await ALMACEN.todos();
-      estado.editor = null;
-      location.hash = 'inicio';
-      avisar('Producto borrado');
+      cerrarCapa();
+      if (estado.editor && estado.editor.id === p.id) estado.editor = null;
+      if (vistaActual() === 'inicio') navegar(); else location.hash = 'inicio';
+      avisar('Producto eliminado');
     },
     compartir: () => abrirCompartir(),
     recortar: () => recortarProducto(),
@@ -560,6 +572,8 @@
     fondo: (el) => {
       estado.editor.fondo = el.dataset.fondo;
       app.querySelectorAll('[data-accion="fondo"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.fondo === estado.editor.fondo)));
+      // los fondos se ven detrás del producto recortado: si todavía no se recortó, se recorta solo
+      if (!estado.editor.recortado) { recortarProducto(true); return; }
       dibujarVista();
     },
     letra: (el) => {
@@ -646,6 +660,7 @@
     navigator.serviceWorker.register('sw.js').catch(() => { /* en la demo no se puede */ });
   }
 
+  if (/\.netlify\.app$/.test(location.hostname)) document.body.classList.add('con-insignia');
   aplicarColor();
   Promise.all([cargarLogo(), cargarProductos()]).then(navegar, navegar);
 })();
