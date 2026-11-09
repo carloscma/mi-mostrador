@@ -170,7 +170,7 @@
   /* ---------------- Navegación ---------------- */
   function vistaActual() {
     const h = location.hash.replace(/^#/, '');
-    return ['editor', 'catalogo', 'ajustes'].indexOf(h) >= 0 ? h : 'inicio';
+    return ['editor', 'catalogo', 'ajustes', 'precios'].indexOf(h) >= 0 ? h : 'inicio';
   }
 
   function navegar() {
@@ -182,10 +182,13 @@
     if (v === 'editor') { app.innerHTML = vistaEditor(); prepararEditor(); }
     else if (v === 'catalogo') app.innerHTML = vistaCatalogo();
     else if (v === 'ajustes') app.innerHTML = vistaAjustes();
+    else if (v === 'precios') app.innerHTML = vistaPrecios();
     else app.innerHTML = vistaInicio();
     window.scrollTo(0, 0);
   }
 
+  const ICONO_PUNTOS = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+  const ICONO_ENGRANAJE = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
   const ICONO_TACHO = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>';
 
   /* ================= Rubros y buscador ================= */
@@ -235,14 +238,16 @@
   function grillaInicio() {
     const ps = filtrar(estado.productos);
     if (!ps.length) return sinResultados();
-    return '<div class="grilla">' + ps.map((p) =>
-      '<div class="item">' +
-      '<button class="miniatura" data-accion="abrir" data-id="' + esc(p.id) + '" aria-label="' + esc('Editar ' + p.nombre + ', ' + precioDe(p) + (cantidadFotos(p) > 1 ? ', ' + cantidadFotos(p) + ' fotos' : '')) + '">' +
-      '<img src="' + p.foto + '" alt="" loading="lazy"><span class="precio-chip">' + esc(precioDe(p)) + '</span>' +
-      (cantidadFotos(p) > 1 ? '<span class="fotos-chip">' + ICONO_FOTOS + cantidadFotos(p) + '</span>' : '') +
-      '<span class="mini-nombre">' + esc(p.nombre) + '<small>' + esc(RUBROS.nombreDe(rubroDe(p))) + '</small></span></button>' +
-      '<button class="borrar-mini" data-accion="pedir-borrar" data-id="' + esc(p.id) + '" aria-label="' + esc('Eliminar ' + p.nombre) + '">' + ICONO_TACHO + '</button>' +
-      '</div>').join('') + '</div>';
+    return '<div class="grilla tarjetas">' + ps.map((p) =>
+      '<article class="tarjeta">' +
+      '<button class="tarjeta-foto" data-accion="abrir" data-id="' + esc(p.id) + '" aria-label="' + esc('Editar ' + p.nombre + ', ' + precioDe(p) + (cantidadFotos(p) > 1 ? ', ' + cantidadFotos(p) + ' fotos' : '')) + '">' +
+      '<img src="' + p.foto + '" alt="" loading="lazy">' +
+      (cantidadFotos(p) > 1 ? '<span class="fotos-chip">' + ICONO_FOTOS + cantidadFotos(p) + '</span>' : '') + '</button>' +
+      '<button class="btn-opciones" data-accion="opciones" data-id="' + esc(p.id) + '" aria-label="' + esc('Opciones de ' + p.nombre) + '">' + ICONO_PUNTOS + '</button>' +
+      '<div class="tarjeta-info"><span class="tarjeta-nombre">' + esc(p.nombre) + '</span>' +
+      '<span class="tarjeta-rubro">' + esc(RUBROS.nombreDe(rubroDe(p))) + '</span>' +
+      '<span class="tarjeta-precio">' + esc(precioDe(p)) + '</span></div>' +
+      '</article>').join('') + '</div>';
   }
 
   /* ================= Inicio ================= */
@@ -252,20 +257,20 @@
       ? (ps.length > 1 ? barraBusqueda('inicio') : '') + '<div id="grilla-inicio">' + grillaInicio() + '</div>'
       : '<p class="vacio">Todavía no sacaste fotos. Tocá "Sacar foto" para empezar.</p>';
 
-    return '<header class="barra-top"><div class="marca-app"><i>M</i>Mostrador</div>' +
-      '<a class="btn-icono" href="#ajustes" aria-label="Ajustes del negocio">Ajustes</a></header>' +
+    return '<header class="barra-top inicio-top"><div class="marca-app"><i>M</i>Mostrador</div><span></span>' +
+      '<a class="btn-engranaje" href="#ajustes" aria-label="Ajustes del negocio">' + ICONO_ENGRANAJE + '</a></header>' +
       '<main class="pagina">' +
       '<section class="camara">' +
-      '<p class="negocio-nombre">' + esc(ajustes.negocio) + '</p>' +
-      '<h1>Sacá la foto, poné el precio y compartila</h1>' +
-      '<label class="btn-camara" for="foto-camara"><span class="icono-camara" aria-hidden="true"></span>Sacar foto</label>' +
+      '<div class="camara-textos"><p class="negocio-nombre">' + esc(ajustes.negocio) + '</p>' +
+      '<h1>Sacá la foto, poné el precio y compartila</h1></div>' +
+      '<div class="camara-botones"><label class="btn-camara" for="foto-camara"><span class="icono-camara" aria-hidden="true"></span>Sacar foto</label>' +
       '<input class="oculto" id="foto-camara" type="file" accept="image/*" capture="environment" data-accion="foto">' +
-      '<label class="btn btn-claro" for="foto-galeria">Elegir de la galería</label>' +
-      '<input class="oculto" id="foto-galeria" type="file" accept="image/*" data-accion="foto">' +
+      '<label class="btn btn-galeria" for="foto-galeria">Elegir de la galería</label>' +
+      '<input class="oculto" id="foto-galeria" type="file" accept="image/*" data-accion="foto"></div>' +
       '</section>' +
       '<section class="seccion">' +
-      '<div class="fila"><h2>Tus productos</h2><a class="btn-texto" href="#catalogo">Ver mi catálogo →</a></div>' +
-      '<p class="detalle">Tocá un producto para cambiarlo y volver a compartirlo. Con el tacho lo eliminás.</p>' +
+      '<div class="fila"><h2>Tus productos <small>' + (ps.length || '') + '</small></h2>' +
+      '<div class="accesos">' + (ps.length ? '<a class="acceso" href="#precios">Precios</a>' : '') + '<a class="acceso" href="#catalogo">Ver catálogo</a></div></div>' +
       grilla + '</section>' +
       (ALMACEN.soloMemoria ? '<p class="nota">Este navegador no deja guardar: tus fotos se borran al cerrar la página.</p>' : '') +
       '</main>';
@@ -307,7 +312,7 @@
     ['letra', 'Letra', '<path d="M2.5 19 8 5l5.5 14M4.6 14h6.8"/><circle cx="18" cy="16" r="3"/><path d="M21 12.5V19"/>'],
     ['mas', 'Más', '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>']
   ];
-  const TITULO_PANEL = { fotos: 'Fotos del producto', datos: 'Nombre, precio y rubro', sticker: 'Sticker del precio', fondo: 'Fondo de la foto', letra: 'Letra del nombre', mas: 'Nombre del negocio y más' };
+  const TITULO_PANEL = { 'el-precio': 'Precio', 'el-nombre': 'Nombre del producto', fotos: 'Fotos del producto', datos: 'Nombre, precio y rubro', sticker: 'Sticker del precio', fondo: 'Fondo de la foto', letra: 'Letra del nombre', mas: 'Nombre del negocio y más' };
 
   // Para saber si quedaron cambios sin guardar
   function firmaEditor(e) {
@@ -320,14 +325,14 @@
     const h = e.herramienta;
     return '<div class="editor2' + (h ? ' con-panel' : '') + '">' +
       '<header class="ed-top"><a class="ed-volver" href="#inicio" data-accion="salir-editor" aria-label="Volver al inicio"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>' +
-      '<b>' + (e.id ? 'Editar publicación' : 'Nueva publicación') + '</b>' +
+      '<span></span>' +
       '<button class="btn ed-guardar" data-accion="guardar">Guardar</button>' +
       '<button class="btn btn-marca ed-compartir" data-accion="compartir">Compartir</button></header>' +
       '<div class="ed-escena" id="ed-escena">' +
       '<div class="ed-foto"><div class="vista-previa" style="' + proporcion(e) + '"><canvas id="lienzo" aria-label="Vista previa. Tocá el precio o el nombre para cambiarlos; arrastralos para moverlos."></canvas>' +
       '<span class="trabajando-aviso" aria-live="polite">Recortando el producto…<small>La primera vez puede tardar unos segundos</small></span>' +
-      '<div id="ed-navfotos">' + navFotos() + '</div>' +
-      '<span class="ed-ayuda" id="ed-ayuda">Tocá el precio o el nombre para cambiarlos. Arrastralos para moverlos.</span></div></div>' +
+      '<span class="ed-ayuda" id="ed-ayuda">Tocá el precio o el nombre para cambiarlos. Arrastralos para moverlos.</span></div>' +
+      '<div class="ed-barra-fotos" id="ed-navfotos">' + navFotos() + '</div></div>' +
       '<nav class="ed-herramientas" aria-label="Herramientas">' + HERRAMIENTAS.map((t) =>
         '<button data-accion="herramienta" data-h="' + t[0] + '" aria-pressed="' + (h === t[0]) + '">' +
         '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + t[2] + '</svg><span>' + t[1] + '</span>' +
@@ -349,11 +354,11 @@
     if (n < 2) return '';
     const v = e.vista;
     const extra = v > 0 ? e.fotos[v - 1] : null;
-    return (v > 0 ? '<button class="ed-flecha izq" data-accion="foto-anterior" aria-label="Foto anterior">‹</button>' : '') +
-      (v < n - 1 ? '<button class="ed-flecha der" data-accion="foto-siguiente" aria-label="Foto siguiente">›</button>' : '') +
-      '<div class="ed-puntos" aria-live="polite"><span class="sr">Foto ' + (v + 1) + ' de ' + n + '</span>' + Array.from({ length: n }, (x, i) => '<i' + (i === v ? ' class="activo"' : '') + '></i>').join('') + '</div>' +
-      (extra ? '<button class="ed-chip-diseno" data-accion="foto-diseno-vista" aria-pressed="' + (extra.diseno !== false) + '">' + (extra.diseno !== false ? '✓ Con precio y nombre' : 'Sin precio · tocá para ponerlo') + '</button>'
-        : '<span class="ed-chip-principal">Principal</span>');
+    return '<button class="ed-flecha" data-accion="foto-anterior" aria-label="Foto anterior"' + (v > 0 ? '' : ' disabled') + '>‹</button>' +
+      '<span class="ed-cual" aria-live="polite">Foto ' + (v + 1) + ' de ' + n + '</span>' +
+      '<button class="ed-flecha" data-accion="foto-siguiente" aria-label="Foto siguiente"' + (v < n - 1 ? '' : ' disabled') + '>›</button>' +
+      (extra ? '<label class="ed-con-precio"><input type="checkbox" data-accion="foto-diseno-vista"' + (extra.diseno !== false ? ' checked' : '') + '>Con precio</label>'
+        : '<span class="ed-es-principal">Principal</span>');
   }
 
   function imgActual() {
@@ -381,7 +386,7 @@
 
   function refrescarNavFotos() {
     const n = document.getElementById('ed-navfotos');
-    if (n) n.innerHTML = navFotos();
+    if (n) { n.innerHTML = navFotos(); ajustarVista(); }
     const c = document.getElementById('cuenta-fotos'); if (c) c.textContent = 1 + estado.editor.fotos.length;
   }
 
@@ -414,7 +419,8 @@
     if (!caja || !vista || !e) return;
     const t = S.tamanoSalida(imgActual());
     const r = t.W / t.H;
-    const W = caja.clientWidth, H = caja.clientHeight;
+    const barra = document.getElementById('ed-navfotos');
+    const W = caja.clientWidth, H = caja.clientHeight - (barra && barra.offsetHeight ? barra.offsetHeight + 8 : 0);
     if (!W || !H) return;
     let w = W, hh = W / r;
     if (hh > H) { hh = H; w = H * r; }
@@ -528,6 +534,14 @@
   function panelOpciones() {
     const e = estado.editor;
     if (e.herramienta === 'datos') return campoDatos();
+    if (e.herramienta === 'el-precio') {
+      return '<div class="campo"><label for="precio">Precio</label><div class="con-signo"><span>$</span><input id="precio" data-campo="precio" inputmode="numeric" value="' + esc(e.precio ? Number(e.precio).toLocaleString('es-AR') : '') + '" placeholder="5.000" autocomplete="off" enterkeyhint="done"></div></div>' +
+        panelSticker();
+    }
+    if (e.herramienta === 'el-nombre') {
+      return '<div class="campo"><label for="nombre">Nombre</label><input id="nombre" data-campo="nombre" value="' + esc(e.nombre) + '" placeholder="Ej: Vasos de vidrio x 6" autocomplete="off" enterkeyhint="done"></div>' +
+        panelLetra();
+    }
     if (e.herramienta === 'fotos') return panelFotos();
     if (e.herramienta === 'mas') return panelMas();
     if (e.herramienta === 'fondo') {
@@ -545,12 +559,22 @@
         '<button class="estilo" data-accion="fondo" data-fondo="' + f.id + '" aria-pressed="' + (e.modoFondo === 'diseno' && e.fondo === f.id) + '">' +
         '<canvas width="180" height="320" data-mini-fondo="' + f.id + '" aria-hidden="true"></canvas><span>' + esc(f.nombre) + '</span></button>').join('') + '</div>';
     }
-    if (e.herramienta === 'letra') {
+    if (e.herramienta === 'letra') return panelLetra();
+    return panelSticker();
+  }
+
+  function panelLetra() {
+    const e = estado.editor;
+    {
       return deslizador('nombre', 'Tamaño del nombre') +
         '<div class="letras" role="group" aria-label="Tipos de letra">' + S.LETRAS.map((l) =>
         '<button class="letra" data-accion="letra" data-letra="' + l.id + '" aria-pressed="' + (e.letra === l.id) + '" style="font-family:' + esc(l.familia) + ', sans-serif;font-weight:' + l.peso + '">' +
         '<b' + (l.mayus ? ' style="text-transform:uppercase"' : '') + '>' + esc(e.nombre || 'Mi producto') + '</b><span>' + esc(l.nombre) + '</span></button>').join('') + '</div>';
     }
+  }
+
+  function panelSticker() {
+    const e = estado.editor;
     return deslizador('precio', 'Tamaño del precio') +
       '<div class="estilos" role="group" aria-label="Estilos de sticker">' + S.ESTILOS.map((st) =>
         '<button class="estilo" data-accion="estilo" data-estilo="' + st.id + '" aria-pressed="' + (e.estilo === st.id) + '">' +
@@ -689,8 +713,8 @@
         arrastre = null;
         lienzo.classList.remove('arrastrando');
         if (ev.type === 'pointerup') {
-          if (k === 'precio') abrirHerramienta('datos', 'precio');
-          else if (k === 'nombre') abrirHerramienta('datos', 'nombre');
+          if (k === 'precio') abrirHerramienta('el-precio');
+          else if (k === 'nombre') abrirHerramienta('el-nombre');
           else abrirHerramienta('mas');
         }
         return;
@@ -902,6 +926,16 @@
       pie = '<button class="btn btn-peligro-lleno btn-ancho" data-accion="confirmar-borrar">Sí, eliminar</button>' +
         '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Cancelar</button>';
     }
+    else if (c.tipo === 'opciones') {
+      const pr = c.producto;
+      titulo = pr.nombre || 'Producto';
+      cuerpo = '<div class="confirmar-borrar"><img src="' + pr.foto + '" alt=""><div><b>' + esc(pr.nombre || 'Sin nombre') + '</b><span>' + esc(precioDe(pr)) + '</span></div></div>' +
+        '<div class="lista-opciones">' +
+        '<button class="opcion" data-accion="abrir" data-id="' + esc(pr.id) + '">Editar</button>' +
+        '<button class="opcion" data-accion="opcion-compartir" data-id="' + esc(pr.id) + '">Compartir</button>' +
+        '<button class="opcion peligro" data-accion="pedir-borrar" data-id="' + esc(pr.id) + '">' + ICONO_TACHO + ' Eliminar</button></div>';
+      pie = '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Cancelar</button>';
+    }
     else if (c.tipo === 'negocio') {
       titulo = '¿Qué vas a vender?';
       const op = [['productos', 'Productos', 'Ropa, bazar, juguetes, accesorios, tecnología…'], ['vehiculos', 'Autos y motos', 'Concesionaria o agencia de vehículos'], ['ambos', 'Las dos cosas', 'Productos y también autos o motos']];
@@ -1030,10 +1064,11 @@
     const ps = estado.productos;
     const total = Object.keys(estado.pedido).reduce((a, id) => { const p = ps.find((x) => x.id === id); return a + (p ? p.precio * estado.pedido[id] : 0); }, 0);
     const cant = Object.values(estado.pedido).reduce((a, b) => a + b, 0);
-    return '<header class="cab-catalogo"><a class="btn-texto claro" href="#inicio">← Inicio</a>' +
-      '<div class="fila-cab"><div class="avatar">' + esc(ajustes.negocio.split(/\s+/).slice(0, 2).map((x) => x[0] || '').join('').toUpperCase()) + '</div>' +
-      '<div><h1>' + esc(ajustes.negocio) + '</h1><p>' + ps.length + ' productos · pedidos por WhatsApp</p></div></div>' +
-      '<p class="aviso-vista">Vista previa: así lo van a ver tus clientes. El link para compartir el catálogo llega con la versión con cuentas.</p></header>' +
+    const avatar = logo ? '<img src="' + esc(local.leer('mostrador:logo')) + '" alt="">' : esc(ajustes.negocio.split(/\s+/).slice(0, 2).map((x) => x[0] || '').join('').toUpperCase());
+    return '<header class="cab-catalogo"><div class="cab-fila"><a class="btn-texto" href="#inicio">← Inicio</a>' +
+      '<span class="etiqueta-vista" title="El link para compartir el catálogo llega con la versión con cuentas">Vista previa de tus clientes</span></div>' +
+      '<div class="fila-cab"><div class="avatar' + (logo ? ' con-logo' : '') + '">' + avatar + '</div>' +
+      '<div><h1>' + esc(ajustes.negocio) + '</h1><p>' + ps.length + (ps.length === 1 ? ' producto' : ' productos') + ' · pedidos por WhatsApp</p></div></div></header>' +
       '<main class="pagina">' + (ps.length > 1 ? barraBusqueda('catalogo') : '') +
       '<div id="grilla-catalogo">' + grillaCatalogo() + '</div></main>' +
       '<div id="barra-pedido">' + barraPedido(cant, total) + '</div>';
@@ -1059,7 +1094,7 @@
       const nf = cantidadFotos(p);
       return '<article class="prod"><div class="prod-foto"><button class="ver-detalle" data-accion="ver-detalle" data-id="' + esc(p.id) + '" aria-label="' + esc('Ver ' + p.nombre + (nf > 1 ? ', ' + nf + ' fotos' : '')) + '"><img src="' + p.foto + '" alt="' + esc(p.nombre) + '" loading="lazy">' +
         (nf > 1 ? '<span class="fotos-chip">' + ICONO_FOTOS + nf + '</span>' : '') + '</button>' +
-        '<button class="borrar-mini" data-accion="pedir-borrar" data-id="' + esc(p.id) + '" aria-label="' + esc('Eliminar ' + p.nombre) + '">' + ICONO_TACHO + '</button></div>' +
+        '<button class="btn-opciones" data-accion="opciones" data-id="' + esc(p.id) + '" aria-label="' + esc('Opciones de ' + p.nombre) + '">' + ICONO_PUNTOS + '</button></div>' +
         '<div class="prod-info"><span class="prod-rubro">' + esc(RUBROS.nombreDe(rubroDe(p))) + '</span><span class="prod-nombre">' + esc(p.nombre) + '</span>' +
         (det ? '<span class="prod-detalle">' + esc(det) + '</span>' : '') +
         '<span class="prod-precio">' + esc(precioDe(p)) + '</span>' +
@@ -1104,6 +1139,78 @@
       (ajustes.whatsapp ? '' : '<p class="nota">El negocio todavía no cargó su WhatsApp en Ajustes: vas a poder elegir a quién mandarlo.</p>')];
   }
 
+  /* ================= Precios: subir o bajar por % y de a uno ================= */
+  const aumento = { sentido: 1, porcentaje: '', rubro: 'todos', redondeo: 100 };
+
+  function nuevoPrecio(precio) {
+    const pct = Number(String(aumento.porcentaje).replace(',', '.')) || 0;
+    const n = precio * (1 + aumento.sentido * pct / 100);
+    const r = aumento.redondeo;
+    return Math.max(0, r ? Math.round(n / r) * r : Math.round(n));
+  }
+  function afectados() {
+    return estado.productos.filter((p) => aumento.rubro === 'todos' || rubroDe(p) === aumento.rubro);
+  }
+
+  function vistaPrecios() {
+    const cuenta = {};
+    estado.productos.forEach((p) => { const r = rubroDe(p); cuenta[r] = (cuenta[r] || 0) + 1; });
+    const rubros = Object.keys(cuenta).sort((a, b) => RUBROS.nombreDe(a).localeCompare(RUBROS.nombreDe(b), 'es'));
+    if (aumento.rubro !== 'todos' && !cuenta[aumento.rubro]) aumento.rubro = 'todos';
+    return '<header class="barra-top"><a class="btn-texto" href="#inicio">← Volver</a><b>Precios</b><span></span></header>' +
+      '<main class="pagina precios">' +
+      '<section class="caja aumento"><h2>Subir o bajar por porcentaje</h2>' +
+      '<div class="segmentos" role="group" aria-label="Subir o bajar">' +
+      '<button data-accion="sentido" data-s="1" aria-pressed="' + (aumento.sentido === 1) + '">Subir</button>' +
+      '<button data-accion="sentido" data-s="-1" aria-pressed="' + (aumento.sentido === -1) + '">Bajar</button></div>' +
+      '<div class="fila-aumento">' +
+      '<div class="campo"><label for="pct">Porcentaje</label><div class="con-pct"><input id="pct" data-aumento="porcentaje" inputmode="decimal" placeholder="10" value="' + esc(aumento.porcentaje) + '" autocomplete="off"><span>%</span></div></div>' +
+      '<div class="campo"><label for="a-quienes">A qué productos</label><select id="a-quienes" data-aumento="rubro"><option value="todos">Todos (' + estado.productos.length + ')</option>' +
+      rubros.map((r) => '<option value="' + r + '"' + (aumento.rubro === r ? ' selected' : '') + '>' + esc(RUBROS.nombreDe(r)) + ' (' + cuenta[r] + ')</option>').join('') + '</select></div>' +
+      '<div class="campo"><label for="redondeo">Redondear a</label><select id="redondeo" data-aumento="redondeo">' +
+      [[0, 'Sin redondeo'], [10, '$10'], [50, '$50'], [100, '$100'], [500, '$500'], [1000, '$1.000']].map((o) => '<option value="' + o[0] + '"' + (aumento.redondeo === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></div>' +
+      '</div>' +
+      '<div id="vista-aumento">' + vistaAumento() + '</div>' +
+      '</section>' +
+      '<section class="caja"><h2>Precio de cada producto</h2><p class="detalle">Escribí el precio nuevo. Se guarda solo.</p>' +
+      '<div class="lista-precios">' + estado.productos.map((p) =>
+        '<div class="fila-precio"><img src="' + p.foto + '" alt=""><div class="fp-datos"><b>' + esc(p.nombre) + '</b><span>' + esc(RUBROS.nombreDe(rubroDe(p))) + '</span></div>' +
+        '<div class="con-signo"><span>$</span><input data-precio-de="' + esc(p.id) + '" inputmode="numeric" aria-label="' + esc('Precio de ' + p.nombre) + '" value="' + esc(Number(p.precio).toLocaleString('es-AR')) + '" autocomplete="off"></div></div>').join('') +
+      '</div></section>' +
+      '</main>';
+  }
+
+  function vistaAumento() {
+    const ps = afectados();
+    const pct = Number(String(aumento.porcentaje).replace(',', '.')) || 0;
+    if (!pct) return '<p class="detalle">Escribí el porcentaje y acá vas a ver cómo quedan los precios antes de aplicarlo.</p>';
+    return '<div class="previa">' + ps.slice(0, 50).map((p) => '<div class="previa-fila"><span>' + esc(p.nombre) + '</span><s>' + esc(pesos(p.precio)) + '</s><b>' + esc(pesos(nuevoPrecio(p.precio))) + '</b></div>').join('') +
+      (ps.length > 50 ? '<p class="detalle">…y ' + (ps.length - 50) + ' más.</p>' : '') + '</div>' +
+      '<button class="btn btn-marca btn-ancho" data-accion="aplicar-aumento">' + (aumento.sentido > 0 ? 'Subir' : 'Bajar') + ' ' + pct + '% a ' + ps.length + (ps.length === 1 ? ' producto' : ' productos') + '</button>';
+  }
+
+  let precioAnterior = null;
+  async function aplicarAumento() {
+    const ps = afectados();
+    precioAnterior = {};
+    for (const p of ps) { precioAnterior[p.id] = p.precio; p.precio = nuevoPrecio(p.precio); await ALMACEN.guardar(p); }
+    estado.productos = await ALMACEN.todos();
+    const n = ps.length;
+    aumento.porcentaje = '';
+    app.innerHTML = vistaPrecios();
+    avisar('Listo: ' + n + (n === 1 ? ' precio actualizado' : ' precios actualizados'), { texto: 'Deshacer', accion: 'deshacer-aumento' });
+  }
+
+  async function deshacerAumento() {
+    if (!precioAnterior) return;
+    for (const p of estado.productos) if (precioAnterior[p.id] !== undefined) { p.precio = precioAnterior[p.id]; await ALMACEN.guardar(p); }
+    precioAnterior = null;
+    estado.productos = await ALMACEN.todos();
+    if (vistaActual() === 'precios') app.innerHTML = vistaPrecios();
+    ocultarAviso();
+    avisar('Volvieron los precios de antes');
+  }
+
   /* ================= Ajustes ================= */
   function vistaAjustes() {
     return '<header class="barra-top"><a class="btn-texto" href="#inicio">← Volver</a><b>Ajustes</b><span></span></header>' +
@@ -1128,7 +1235,24 @@
 
   /* ================= Eventos ================= */
   const acciones = {
-    abrir: (el) => { const p = estado.productos.find((x) => x.id === el.dataset.id); if (p) abrirEditor(p); },
+    abrir: (el) => { const p = estado.productos.find((x) => x.id === el.dataset.id); cerrarCapa(); if (p) abrirEditor(p); },
+    sentido: (el) => {
+      aumento.sentido = Number(el.dataset.s);
+      app.querySelectorAll('[data-accion="sentido"]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.s) === aumento.sentido)));
+      document.getElementById('vista-aumento').innerHTML = vistaAumento();
+    },
+    'aplicar-aumento': () => aplicarAumento(),
+    'deshacer-aumento': () => deshacerAumento(),
+    opciones: (el) => { const p = estado.productos.find((x) => x.id === el.dataset.id); if (p) abrirCapa({ tipo: 'opciones', producto: p }); },
+    'opcion-compartir': async (el) => {
+      const p = estado.productos.find((x) => x.id === el.dataset.id);
+      cerrarCapa();
+      if (!p) return;
+      await abrirEditor(p);
+      await new Promise((ok) => setTimeout(ok, 350));
+      await S.prepararFuentes().catch(() => null);
+      abrirCompartir();
+    },
     estilo: (el) => {
       estado.editor.estilo = el.dataset.estilo;
       app.querySelectorAll('[data-accion="estilo"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.estilo === estado.editor.estilo)));
@@ -1174,13 +1298,7 @@
     'foto-ver': (el) => cambiarVista(Number(el.dataset.v)),
     'foto-anterior': () => cambiarVista(estado.editor.vista - 1),
     'foto-siguiente': () => cambiarVista(estado.editor.vista + 1),
-    'foto-diseno-vista': () => {
-      const e = estado.editor; const f = e.vista > 0 && e.fotos[e.vista - 1];
-      if (!f) return;
-      f.diseno = f.diseno === false;
-      refrescarNavFotos(); dibujarVista();
-      if (e.herramienta === 'fotos') refrescarPanel();
-    },
+
     'elegir-negocio': (el) => {
       ajustes.tipoNegocio = el.dataset.tipo; guardarAjustes();
       cerrarCapa();
@@ -1254,6 +1372,17 @@
   document.addEventListener('input', (ev) => {
     const el = ev.target;
     if (el.dataset.buscar) { estado.filtro.q = el.value; refrescarListas(); return; }
+    if (el.dataset.aumento === 'porcentaje') {
+      el.value = el.value.replace(/[^\d.,]/g, '').slice(0, 6);
+      aumento.porcentaje = el.value;
+      document.getElementById('vista-aumento').innerHTML = vistaAumento();
+      return;
+    }
+    if (el.dataset.precioDe) {
+      const n = el.value.replace(/\D/g, '').slice(0, 10);
+      el.value = n ? Number(n).toLocaleString('es-AR') : '';
+      return;
+    }
     if (el.dataset.auto && estado.editor && el.tagName === 'INPUT' && el.type !== 'checkbox') {
       const a = estado.editor.auto;
       if (el.dataset.auto === 'km') {
@@ -1316,9 +1445,26 @@
       dibujarVista();
       return;
     }
+    if (el.dataset.accion === 'foto-diseno-vista' && estado.editor) {
+      const e = estado.editor; const f = e.vista > 0 && e.fotos[e.vista - 1];
+      if (f) { f.diseno = el.checked; dibujarVista(); if (e.herramienta === 'fotos') refrescarPanel(); }
+      return;
+    }
     if (el.dataset.accion === 'foto-diseno' && estado.editor) {
       const f = estado.editor.fotos[Number(el.dataset.i)];
       if (f) { f.diseno = el.checked; refrescarNavFotos(); dibujarVista(); }
+      return;
+    }
+    if (el.dataset.aumento === 'rubro' || el.dataset.aumento === 'redondeo') {
+      aumento[el.dataset.aumento] = el.dataset.aumento === 'redondeo' ? Number(el.value) : el.value;
+      document.getElementById('vista-aumento').innerHTML = vistaAumento();
+      return;
+    }
+    if (el.dataset.precioDe) {
+      const p = estado.productos.find((x) => x.id === el.dataset.precioDe);
+      const n = Number(el.value.replace(/\D/g, ''));
+      if (p && n > 0 && n !== p.precio) { p.precio = n; ALMACEN.guardar(p).then(() => avisar('Precio guardado: ' + p.nombre)); }
+      else if (p && !n) { el.value = Number(p.precio).toLocaleString('es-AR'); avisar('El precio no puede quedar vacío'); }
       return;
     }
     if (el.dataset.ajuste === 'tipoNegocio') { ajustes.tipoNegocio = el.value; guardarAjustes(); avisar('Guardado'); return; }
