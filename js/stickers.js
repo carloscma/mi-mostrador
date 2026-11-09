@@ -25,6 +25,10 @@ window.STICKERS = (function () {
     { id: 'cartel', nombre: 'Cartel', ancho: 1.15 },
     { id: 'burbuja', nombre: 'Globo', ancho: 1.2 },
     { id: 'neon', nombre: 'Neón', ancho: 1.25 },
+    { id: 'liquidacion', nombre: 'Liquidación', ancho: 1.2 },
+    { id: 'dosxuno', nombre: '2x1', ancho: 1.05 },
+    { id: 'nuevo', nombre: 'Nuevo', ancho: 1 },
+    { id: 'ultimas', nombre: 'Últimas unidades', ancho: 1.2 },
     { id: 'banda', nombre: 'Banda', ancho: 0 }
   ];
   const POSICIONES = ['abajo-der', 'abajo-izq', 'arriba-der', 'arriba-izq'];
@@ -106,7 +110,12 @@ window.STICKERS = (function () {
     ctx.textAlign = 'center';
     ctx.fillStyle = color;
     if (opciones.brillo) { ctx.shadowColor = opciones.brillo; ctx.shadowBlur = 24; }
-    if (arriba) { ctx.font = fuente(800, arriba, CUERPO); y += arriba; ctx.fillText(d.arriba, 0, y); y += arriba * 0.25; }
+    if (arriba) {
+      ctx.font = fuente(800, arriba, CUERPO);
+      const w = ctx.measureText(d.arriba).width;
+      const pxA = w > anchoMax ? Math.floor(arriba * anchoMax / w) : arriba;
+      ctx.font = fuente(800, pxA, CUERPO); y += arriba; ctx.fillText(d.arriba, 0, y); y += arriba * 0.25;
+    }
     ctx.font = fuente(800, px, DISPLAY); y += px * 0.78; ctx.fillText(d.precio, 0, y);
     if (abajo) { ctx.font = fuente(700, abajo, CUERPO); y += abajo * 1.55; ctx.fillText(d.abajo, 0, y); }
     ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
@@ -118,6 +127,45 @@ window.STICKERS = (function () {
 
   /* ---------- los estilos ---------- */
   const dibujantes = {
+    liquidacion(ctx, r, d) {
+      ctx.rotate(-0.12);
+      const w = r * 2.3, h = r * 1.35;
+      ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, r * 0.16);
+      sombra(ctx, r); ctx.fillStyle = '#D61F69'; ctx.fill(); sinSombra(ctx);
+      ctx.save(); ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, r * 0.16); ctx.clip();
+      ctx.fillStyle = 'rgba(255,255,255,.12)';
+      for (let x = -w; x < w; x += r * 0.34) { ctx.beginPath(); ctx.moveTo(x, -h / 2); ctx.lineTo(x + r * 0.17, -h / 2); ctx.lineTo(x + r * 0.17 + h, h / 2); ctx.lineTo(x + h, h / 2); ctx.closePath(); ctx.fill(); }
+      ctx.restore();
+      textosCentrados(ctx, Object.assign({}, d, { arriba: 'LIQUIDACIÓN' }), w * 0.86, r * 0.46, '#FFFFFF');
+    },
+    dosxuno(ctx, r, d) {
+      ctx.rotate(-0.08);
+      ctx.beginPath();
+      for (let i = 0; i < 24; i++) { const rr = i % 2 ? r * 0.84 : r, a = (i / 24) * Math.PI * 2; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+      ctx.closePath(); sombra(ctx, r); ctx.fillStyle = '#FF7A00'; ctx.fill(); sinSombra(ctx);
+      ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center';
+      ctx.font = fuente(800, Math.round(r * 0.5), DISPLAY); ctx.fillText('2x1', 0, -r * 0.18);
+      ctx.textAlign = 'left';
+      ctx.save(); ctx.translate(0, r * 0.3);
+      textosCentrados(ctx, d, r * 1.3, r * 0.34, '#FFFFFF');
+      ctx.restore();
+    },
+    nuevo(ctx, r, d) {
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.95, 0, Math.PI * 2);
+      sombra(ctx, r); ctx.fillStyle = '#0E9F6E'; ctx.fill(); sinSombra(ctx);
+      ctx.lineWidth = r * 0.05; ctx.strokeStyle = '#FFFFFF';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.84, 0, Math.PI * 2); ctx.stroke();
+      textosCentrados(ctx, Object.assign({}, d, { arriba: '★ NUEVO ★' }), r * 1.35, r * 0.44, '#FFFFFF');
+    },
+    ultimas(ctx, r, d) {
+      ctx.rotate(0.05);
+      const w = r * 2.3, h = r * 1.3;
+      ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, r * 0.12);
+      sombra(ctx, r); ctx.fillStyle = '#17181F'; ctx.fill(); sinSombra(ctx);
+      ctx.lineWidth = r * 0.035; ctx.strokeStyle = '#FFD23F';
+      ctx.beginPath(); ctx.roundRect(-w / 2 + r * 0.08, -h / 2 + r * 0.08, w - r * 0.16, h - r * 0.16, r * 0.08); ctx.stroke();
+      textosCentrados(ctx, Object.assign({}, d, { arriba: 'ÚLTIMAS UNIDADES' }), w * 0.82, r * 0.44, '#FFD23F');
+    },
     estrella(ctx, r, d) {
       ctx.rotate(-0.14);
       ctx.beginPath();

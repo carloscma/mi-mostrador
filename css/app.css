@@ -506,3 +506,8 @@ body[data-vista="editor"] { overflow: hidden; overscroll-behavior: none; }
 /* inicio: título en una línea */
 .seccion h2 { font-size: 20px; white-space: nowrap; }
 .acceso { padding: 7px 11px; font-size: 13.5px; }
+/* Precios: último cambio */
+.ultimo-cambio { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--marca-suave); border-color: transparent; }
+.ultimo-cambio div { display: grid; gap: 2px; }
+.ultimo-cambio span { font-size: 14px; color: var(--suave); }
+#ejemplo-redondeo b { color: var(--texto); }

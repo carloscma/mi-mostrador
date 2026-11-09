@@ -1140,13 +1140,14 @@
   }
 
   /* ================= Precios: subir o bajar por % y de a uno ================= */
-  const aumento = { sentido: 1, porcentaje: '', rubro: 'todos', redondeo: 100 };
+  const aumento = { sentido: 1, porcentaje: '', rubro: 'todos', redondeo: 500 };
 
   function nuevoPrecio(precio) {
     const pct = Number(String(aumento.porcentaje).replace(',', '.')) || 0;
     const n = precio * (1 + aumento.sentido * pct / 100);
     const r = aumento.redondeo;
-    return Math.max(0, r ? Math.round(n / r) * r : Math.round(n));
+    // siempre hacia arriba, para no perder plata
+    return Math.max(0, r ? Math.ceil(Math.round(n) / r) * r : Math.round(n));
   }
   function afectados() {
     return estado.productos.filter((p) => aumento.rubro === 'todos' || rubroDe(p) === aumento.rubro);
@@ -1168,10 +1169,12 @@
       '<div class="campo"><label for="a-quienes">A qué productos</label><select id="a-quienes" data-aumento="rubro"><option value="todos">Todos (' + estado.productos.length + ')</option>' +
       rubros.map((r) => '<option value="' + r + '"' + (aumento.rubro === r ? ' selected' : '') + '>' + esc(RUBROS.nombreDe(r)) + ' (' + cuenta[r] + ')</option>').join('') + '</select></div>' +
       '<div class="campo"><label for="redondeo">Redondear a</label><select id="redondeo" data-aumento="redondeo">' +
-      [[0, 'Sin redondeo'], [10, '$10'], [50, '$50'], [100, '$100'], [500, '$500'], [1000, '$1.000']].map((o) => '<option value="' + o[0] + '"' + (aumento.redondeo === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></div>' +
+      [[500, '$500'], [1000, '$1.000']].map((o) => '<option value="' + o[0] + '"' + (aumento.redondeo === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></div>' +
       '</div>' +
+      '<p class="detalle" id="ejemplo-redondeo">' + ejemploRedondeo() + '</p>' +
       '<div id="vista-aumento">' + vistaAumento() + '</div>' +
       '</section>' +
+      ultimoCambioHtml() +
       '<section class="caja"><h2>Precio de cada producto</h2><p class="detalle">Escribí el precio nuevo. Se guarda solo.</p>' +
       '<div class="lista-precios">' + estado.productos.map((p) =>
         '<div class="fila-precio"><img src="' + p.foto + '" alt=""><div class="fp-datos"><b>' + esc(p.nombre) + '</b><span>' + esc(RUBROS.nombreDe(rubroDe(p))) + '</span></div>' +
@@ -1180,34 +1183,57 @@
       '</main>';
   }
 
+  function ejemploRedondeo() {
+    const p = afectados()[0];
+    const base = p ? p.precio : 3450;
+    const pct = Number(String(aumento.porcentaje).replace(',', '.')) || 10;
+    const crudo = Math.round(base * (1 + aumento.sentido * pct / 100));
+    const guarda = Object.assign({}, aumento, { porcentaje: pct });
+    const antes = aumento.porcentaje; aumento.porcentaje = pct; const final = nuevoPrecio(base); aumento.porcentaje = antes; void guarda;
+    return 'Redondeo: el precio nuevo sube al múltiplo de ' + pesos(aumento.redondeo) + ' que sigue. Ej.: ' + (p ? esc(p.nombre) + ' ' : '') + pesos(base) + (aumento.sentido > 0 ? ' + ' : ' − ') + pct + '% = ' + pesos(crudo) + ' → queda en <b>' + pesos(final) + '</b>.';
+  }
+
+  function ultimoCambioHtml() {
+    let u = null;
+    try { u = JSON.parse(local.leer('mostrador:ultimo-aumento') || 'null'); } catch (e) { u = null; }
+    if (!u) return '';
+    return '<section class="caja ultimo-cambio" id="ultimo-cambio"><div><b>Último cambio</b><span>' + esc(u.texto) + '</span></div>' +
+      '<button class="btn btn-chico" data-accion="deshacer-aumento">Deshacer</button></section>';
+  }
+
   function vistaAumento() {
     const ps = afectados();
     const pct = Number(String(aumento.porcentaje).replace(',', '.')) || 0;
     if (!pct) return '<p class="detalle">Escribí el porcentaje y acá vas a ver cómo quedan los precios antes de aplicarlo.</p>';
     return '<div class="previa">' + ps.slice(0, 50).map((p) => '<div class="previa-fila"><span>' + esc(p.nombre) + '</span><s>' + esc(pesos(p.precio)) + '</s><b>' + esc(pesos(nuevoPrecio(p.precio))) + '</b></div>').join('') +
       (ps.length > 50 ? '<p class="detalle">…y ' + (ps.length - 50) + ' más.</p>' : '') + '</div>' +
-      '<button class="btn btn-marca btn-ancho" data-accion="aplicar-aumento">' + (aumento.sentido > 0 ? 'Subir' : 'Bajar') + ' ' + pct + '% a ' + ps.length + (ps.length === 1 ? ' producto' : ' productos') + '</button>';
+      '<button class="btn btn-marca btn-ancho" data-accion="aplicar-aumento">Aplicar: ' + (aumento.sentido > 0 ? 'subir' : 'bajar') + ' ' + pct + '% a ' + ps.length + (ps.length === 1 ? ' producto' : ' productos') + '</button>' +
+      '<p class="nota">Hasta que no tocás "Aplicar", los precios no cambian.</p>';
   }
 
-  let precioAnterior = null;
   async function aplicarAumento() {
     const ps = afectados();
-    precioAnterior = {};
-    for (const p of ps) { precioAnterior[p.id] = p.precio; p.precio = nuevoPrecio(p.precio); await ALMACEN.guardar(p); }
+    const anteriores = {};
+    const pct = Number(String(aumento.porcentaje).replace(',', '.')) || 0;
+    for (const p of ps) { anteriores[p.id] = p.precio; p.precio = nuevoPrecio(p.precio); await ALMACEN.guardar(p); }
     estado.productos = await ALMACEN.todos();
     const n = ps.length;
+    const texto = (aumento.sentido > 0 ? '+' : '−') + pct + '% a ' + n + (n === 1 ? ' producto' : ' productos') +
+      (aumento.rubro !== 'todos' ? ' de ' + RUBROS.nombreDe(aumento.rubro) : '') + ' · ' + new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' }) + ' ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    local.escribir('mostrador:ultimo-aumento', JSON.stringify({ texto: texto, anteriores: anteriores }));
     aumento.porcentaje = '';
     app.innerHTML = vistaPrecios();
-    avisar('Listo: ' + n + (n === 1 ? ' precio actualizado' : ' precios actualizados'), { texto: 'Deshacer', accion: 'deshacer-aumento' });
+    avisar('Listo: ' + n + (n === 1 ? ' precio actualizado' : ' precios actualizados'));
   }
 
   async function deshacerAumento() {
-    if (!precioAnterior) return;
-    for (const p of estado.productos) if (precioAnterior[p.id] !== undefined) { p.precio = precioAnterior[p.id]; await ALMACEN.guardar(p); }
-    precioAnterior = null;
+    let u = null;
+    try { u = JSON.parse(local.leer('mostrador:ultimo-aumento') || 'null'); } catch (e) { u = null; }
+    if (!u) return;
+    for (const p of estado.productos) if (u.anteriores[p.id] !== undefined) { p.precio = u.anteriores[p.id]; await ALMACEN.guardar(p); }
+    local.escribir('mostrador:ultimo-aumento', 'null');
     estado.productos = await ALMACEN.todos();
     if (vistaActual() === 'precios') app.innerHTML = vistaPrecios();
-    ocultarAviso();
     avisar('Volvieron los precios de antes');
   }
 
@@ -1240,6 +1266,7 @@
       aumento.sentido = Number(el.dataset.s);
       app.querySelectorAll('[data-accion="sentido"]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.s) === aumento.sentido)));
       document.getElementById('vista-aumento').innerHTML = vistaAumento();
+      document.getElementById('ejemplo-redondeo').innerHTML = ejemploRedondeo();
     },
     'aplicar-aumento': () => aplicarAumento(),
     'deshacer-aumento': () => deshacerAumento(),
@@ -1376,6 +1403,7 @@
       el.value = el.value.replace(/[^\d.,]/g, '').slice(0, 6);
       aumento.porcentaje = el.value;
       document.getElementById('vista-aumento').innerHTML = vistaAumento();
+      document.getElementById('ejemplo-redondeo').innerHTML = ejemploRedondeo();
       return;
     }
     if (el.dataset.precioDe) {
@@ -1458,6 +1486,7 @@
     if (el.dataset.aumento === 'rubro' || el.dataset.aumento === 'redondeo') {
       aumento[el.dataset.aumento] = el.dataset.aumento === 'redondeo' ? Number(el.value) : el.value;
       document.getElementById('vista-aumento').innerHTML = vistaAumento();
+      document.getElementById('ejemplo-redondeo').innerHTML = ejemploRedondeo();
       return;
     }
     if (el.dataset.precioDe) {
