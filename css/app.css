@@ -511,3 +511,10 @@ body[data-vista="editor"] { overflow: hidden; overscroll-behavior: none; }
 .ultimo-cambio div { display: grid; gap: 2px; }
 .ultimo-cambio span { font-size: 14px; color: var(--suave); }
 #ejemplo-redondeo b { color: var(--texto); }
+
+/* ===== Etapa 8 ===== */
+/* Listo del panel con el color de la app */
+.ed-panel-cab [data-accion="cerrar-panel"] { background: var(--marca); color: #fff; border-color: var(--marca); min-height: 40px; padding: 0 18px; font-weight: 800; }
+/* Ordenar productos */
+.ordenar { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--suave); }
+.ordenar select { border: 1px solid var(--borde); border-radius: 10px; background: var(--superficie); color: var(--texto); font: inherit; font-weight: 700; padding: 6px 8px; min-height: 38px; }

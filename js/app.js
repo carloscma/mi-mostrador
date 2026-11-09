@@ -146,7 +146,8 @@
     productos: [],
     editor: null,     // la publicación que se está armando
     pedido: {},       // catálogo: id -> cantidad
-    filtro: { q: '', rubro: 'todos' },  // buscador y rubro elegido (inicio y catálogo)
+    filtro: { q: '', rubro: 'todos' },
+    orden: 'nuevos',  // buscador y rubro elegido (inicio y catálogo)
     capa: null
   };
 
@@ -217,6 +218,9 @@
       '<label class="buscador"><span class="sr">Buscar productos</span>' +
       '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>' +
       '<input type="search" id="buscar-' + lugar + '" data-buscar="' + lugar + '" placeholder="Buscar por nombre, rubro o precio" value="' + esc(f.q) + '" autocomplete="off" enterkeyhint="search"></label>' +
+      (lugar === 'inicio' ? '<label class="ordenar"><span>Ordenar:</span><select data-orden aria-label="Ordenar productos">' +
+        [['nuevos', 'Más nuevos'], ['viejos', 'Más viejos'], ['barato', 'Menor precio'], ['caro', 'Mayor precio'], ['nombre', 'Nombre (A-Z)']].map((o) => '<option value="' + o[0] + '"' + (estado.orden === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') +
+        '</select></label>' : '') +
       (rubros.length > 1 ? '<div class="chips" role="group" aria-label="Rubros">' +
         '<button class="chip" data-accion="rubro-filtro" data-rubro="todos" aria-pressed="' + (f.rubro === 'todos') + '">Todos <b>' + estado.productos.length + '</b></button>' +
         rubros.map((r) => '<button class="chip" data-accion="rubro-filtro" data-rubro="' + r + '" aria-pressed="' + (f.rubro === r) + '">' + esc(RUBROS.nombreDe(r)) + ' <b>' + cuenta[r] + '</b></button>').join('') + '</div>' : '') +
@@ -235,8 +239,19 @@
     app.querySelectorAll('[data-accion="rubro-filtro"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.rubro === estado.filtro.rubro)));
   }
 
+  function ordenar(lista) {
+    const ps = lista.slice();
+    const o = estado.orden;
+    if (o === 'viejos') ps.sort((a, b) => (a.fecha || 0) - (b.fecha || 0));
+    else if (o === 'barato') ps.sort((a, b) => (Number(a.precio) || 0) - (Number(b.precio) || 0));
+    else if (o === 'caro') ps.sort((a, b) => (Number(b.precio) || 0) - (Number(a.precio) || 0));
+    else if (o === 'nombre') ps.sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
+    else ps.sort((a, b) => (b.fecha || 0) - (a.fecha || 0));
+    return ps;
+  }
+
   function grillaInicio() {
-    const ps = filtrar(estado.productos);
+    const ps = ordenar(filtrar(estado.productos));
     if (!ps.length) return sinResultados();
     return '<div class="grilla tarjetas">' + ps.map((p) =>
       '<article class="tarjeta">' +
@@ -933,6 +948,7 @@
         '<div class="lista-opciones">' +
         '<button class="opcion" data-accion="abrir" data-id="' + esc(pr.id) + '">Editar</button>' +
         '<button class="opcion" data-accion="opcion-compartir" data-id="' + esc(pr.id) + '">Compartir</button>' +
+        '<button class="opcion" data-accion="duplicar" data-id="' + esc(pr.id) + '">Duplicar (para uno parecido)</button>' +
         '<button class="opcion peligro" data-accion="pedir-borrar" data-id="' + esc(pr.id) + '">' + ICONO_TACHO + ' Eliminar</button></div>';
       pie = '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Cancelar</button>';
     }
@@ -958,7 +974,8 @@
         (otras ? '<label class="interruptor todas-fotos"><input type="checkbox" data-accion="todas-fotos"' + (c.todas ? ' checked' : '') + '><span>Compartir también ' + (otras === 1 ? 'la otra foto' : 'las otras ' + otras + ' fotos') + '</span></label>' : '') +
         '<p class="nota">La app te va a llevar red por red con la imagen y el texto listos.</p>';
       const n = c.elegidas.length;
-      pie = '<button class="btn btn-marca btn-ancho" data-accion="empezar"' + (n ? '' : ' disabled') + '>' + (n ? 'Empezar (' + n + (n === 1 ? ' red)' : ' redes)') : 'Elegí al menos una red') + '</button>';
+      pie = '<button class="btn btn-marca btn-ancho" data-accion="empezar"' + (n ? '' : ' disabled') + '>' + (n ? 'Empezar (' + n + (n === 1 ? ' red)' : ' redes)') : 'Elegí al menos una red') + '</button>' +
+        '<button class="btn btn-claro btn-ancho" data-accion="guardar-fotos">Guardar las fotos en el celular</button>';
     } else if (c.paso < c.cola.length) {
       const r = REDES.find((x) => x.id === c.cola[c.paso]);
       titulo = (c.paso + 1) + ' de ' + c.cola.length + ' · ' + r.nombre;
@@ -973,7 +990,8 @@
       titulo = '¡Listo!';
       cuerpo = '<div class="final"><p><b>' + esc(c.producto.nombre) + '</b> ya está en tu catálogo.</p>' +
         '<p class="detalle">¿Te equivocaste o cambió el precio? Tocá "Editar esta publicación", o abrila después desde "Tus productos".</p></div>';
-      pie = '<button class="btn btn-claro btn-ancho" data-accion="volver-editar">Editar esta publicación</button>' +
+      pie = '<button class="btn btn-claro btn-ancho" data-accion="guardar-fotos">Guardar las fotos en el celular</button>' +
+        '<button class="btn btn-claro btn-ancho" data-accion="volver-editar">Editar esta publicación</button>' +
         '<label class="btn btn-marca btn-ancho" for="foto-otra">Sacar otra foto</label>' +
         '<input class="oculto" id="foto-otra" type="file" accept="image/*" capture="environment" data-accion="foto">' +
         '<a class="btn btn-claro btn-ancho" href="#inicio">Ir al inicio</a>';
@@ -1012,6 +1030,39 @@
     if (!(window.claude && typeof window.claude.use === 'function')) return Promise.resolve(null);
     if (!permisoDescargas) permisoDescargas = Promise.resolve(window.claude.use('downloads')).catch(() => null);
     return permisoDescargas;
+  }
+
+  async function archivosDeLaCapa() {
+    const c = estado.capa;
+    const blob = await c.imagen;
+    const nombre = (normalizar(c.producto.nombre).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'producto') + '.jpg';
+    const archivos = [new File([blob], nombre, { type: 'image/jpeg' })];
+    if (c.todas && c.extras) {
+      const bs = await c.extras;
+      bs.forEach((b, i) => archivos.push(new File([b], nombre.replace(/\.jpg$/, '-' + (i + 2) + '.jpg'), { type: 'image/jpeg' })));
+    }
+    return archivos;
+  }
+
+  async function descargar(archivos) {
+    const dl = await descargasClaude();
+    if (dl) { for (const f of archivos) await dl.save({ filename: f.name, data: f }); return; }
+    for (const f of archivos) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(f); a.download = f.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      await new Promise((ok) => setTimeout(ok, 250));
+    }
+  }
+
+  async function guardarFotosEnCelular() {
+    avisar('Preparando las fotos…');
+    try {
+      const archivos = await archivosDeLaCapa();
+      await descargar(archivos);
+      copiar(textoRed(estado.capa.producto, 'facebook'));
+      avisar((archivos.length > 1 ? archivos.length + ' fotos guardadas' : 'Foto guardada') + ' en Descargas. El texto quedó copiado.');
+    } catch (e) { if (!e || e.code !== 'declined') avisar('No se pudieron guardar las fotos.'); }
   }
 
   async function compartirRedActual() {
@@ -1237,6 +1288,37 @@
     avisar('Volvieron los precios de antes');
   }
 
+  /* ================= Copia de seguridad ================= */
+  async function exportarCopia() {
+    avisar('Armando la copia…');
+    try {
+      const ps = await ALMACEN.todos();
+      const datos = { app: 'mostrador', version: 1, fecha: new Date().toISOString(), ajustes: ajustes, logo: local.leer('mostrador:logo'), productos: ps };
+      const hoy = new Date();
+      const nombre = 'mostrador-copia-' + hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0') + '.json';
+      await descargar([new File([JSON.stringify(datos)], nombre, { type: 'application/json' })]);
+      const cuando = hoy.toLocaleDateString('es-AR') + ' ' + hoy.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ' · ' + ps.length + ' productos';
+      local.escribir('mostrador:ultima-copia', cuando);
+      if (vistaActual() === 'ajustes') app.innerHTML = vistaAjustes();
+      avisar('Copia guardada en Descargas: ' + nombre);
+    } catch (e) { if (!e || e.code !== 'declined') avisar('No se pudo guardar la copia.'); }
+  }
+
+  async function importarCopia(archivo) {
+    try {
+      const datos = JSON.parse(await archivo.text());
+      if (!datos || datos.app !== 'mostrador' || !Array.isArray(datos.productos)) { avisar('Ese archivo no es una copia de Mostrador.'); return; }
+      let nuevos = 0, actualizados = 0;
+      const ids = new Set(estado.productos.map((p) => p.id));
+      for (const p of datos.productos) { if (!p || !p.id || !p.foto) continue; if (ids.has(p.id)) actualizados++; else nuevos++; await ALMACEN.guardar(p); }
+      if (datos.ajustes && typeof datos.ajustes === 'object') { Object.assign(ajustes, datos.ajustes); guardarAjustes(); aplicarColor(); }
+      if (datos.logo) { local.escribir('mostrador:logo', datos.logo); await cargarLogo(); }
+      estado.productos = await ALMACEN.todos();
+      if (vistaActual() === 'ajustes') app.innerHTML = vistaAjustes();
+      avisar('Copia recuperada: ' + nuevos + ' productos nuevos' + (actualizados ? ', ' + actualizados + ' actualizados' : ''));
+    } catch (e) { avisar('No se pudo leer el archivo de la copia.'); }
+  }
+
   /* ================= Ajustes ================= */
   function vistaAjustes() {
     return '<header class="barra-top"><a class="btn-texto" href="#inicio">← Volver</a><b>Ajustes</b><span></span></header>' +
@@ -1255,6 +1337,11 @@
       COLORES.map((c) => '<button data-accion="color" data-color="' + c + '" style="background:' + c + '" aria-label="Color ' + c + '" aria-pressed="' + (ajustes.color === c) + '"></button>').join('') + '</div></div>' +
       '<label class="interruptor"><input type="checkbox" data-ajuste="mostrarNegocio"' + (ajustes.mostrarNegocio ? ' checked' : '') + '><span>Poner el nombre del negocio en las imágenes</span></label>' +
       '<label class="interruptor"><input type="checkbox" data-ajuste="mostrarCodigo"' + (ajustes.mostrarCodigo ? ' checked' : '') + '><span>Poner un código a cada producto (para pedir "3 de la 07")</span></label>' +
+      '<section class="caja"><h2>Copia de seguridad</h2><p class="detalle">Guardá todos tus productos (con sus fotos), el nombre del negocio y el logo en un archivo. Sirve para pasarlos a otro celular o recuperarlos si se borran.</p>' +
+      '<div class="fila-botones"><button class="btn btn-chico btn-marca" data-accion="exportar">Guardar copia</button>' +
+      '<label class="btn btn-chico" for="a-importar">Recuperar copia</label></div>' +
+      '<input class="oculto" id="a-importar" type="file" accept=".json,application/json" data-accion="importar">' +
+      (local.leer('mostrador:ultima-copia') ? '<p class="nota">Última copia: ' + esc(local.leer('mostrador:ultima-copia')) + '</p>' : '') + '</section>' +
       '<section class="caja"><h2>Tener la app en tu celular</h2><p>Abrí este link en Chrome (Android) o Safari (iPhone), tocá el menú y elegí <b>"Agregar a la pantalla de inicio"</b>. Queda con su ícono, como cualquier app.</p></section>' +
       '</main>';
   }
@@ -1270,6 +1357,22 @@
     },
     'aplicar-aumento': () => aplicarAumento(),
     'deshacer-aumento': () => deshacerAumento(),
+    duplicar: async (el) => {
+      const p = estado.productos.find((x) => x.id === el.dataset.id);
+      cerrarCapa();
+      if (!p) return;
+      const copia = JSON.parse(JSON.stringify(p));
+      copia.id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      copia.nombre = (p.nombre || 'Producto') + ' (copia)';
+      copia.codigo = siguienteCodigo();
+      copia.fecha = Date.now();
+      await ALMACEN.guardar(copia);
+      estado.productos = await ALMACEN.todos();
+      await abrirEditor(estado.productos.find((x) => x.id === copia.id));
+      setTimeout(() => { abrirHerramienta('datos', 'nombre'); avisar('Copia lista: cambiá lo que sea distinto'); }, 400);
+    },
+    'exportar': () => exportarCopia(),
+    'guardar-fotos': () => guardarFotosEnCelular(),
     opciones: (el) => { const p = estado.productos.find((x) => x.id === el.dataset.id); if (p) abrirCapa({ tipo: 'opciones', producto: p }); },
     'opcion-compartir': async (el) => {
       const p = estado.productos.find((x) => x.id === el.dataset.id);
@@ -1496,6 +1599,8 @@
       else if (p && !n) { el.value = Number(p.precio).toLocaleString('es-AR'); avisar('El precio no puede quedar vacío'); }
       return;
     }
+    if (el.dataset.orden !== undefined && el.tagName === 'SELECT') { estado.orden = el.value; refrescarListas(); return; }
+    if (el.dataset.accion === 'importar' && el.files && el.files[0]) { const f = el.files[0]; el.value = ''; importarCopia(f); return; }
     if (el.dataset.ajuste === 'tipoNegocio') { ajustes.tipoNegocio = el.value; guardarAjustes(); avisar('Guardado'); return; }
     if (el.dataset.accion === 'mas-fotos' && el.files && el.files.length && estado.editor) { const fs = Array.from(el.files); el.value = ''; agregarFotos(fs); return; }
     if (el.dataset.accion === 'foto' && el.files && el.files[0]) { nuevaFoto(el.files[0]); el.value = ''; return; }
