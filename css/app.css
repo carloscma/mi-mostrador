@@ -386,3 +386,27 @@ body[data-vista="editor"] { overflow: hidden; overscroll-behavior: none; }
 .ficha-extras span { background: var(--marca-suave); color: var(--acento); font-weight: 700; font-size: 14px; padding: 5px 10px; border-radius: 999px; }
 .cant-detalle { display: flex; justify-content: center; }
 .cant-detalle .btn { width: 100%; min-height: 50px; font-size: 16px; }
+
+/* ===== Etapa 5b: pasar fotos con el dedo, precio por foto, tipo de negocio ===== */
+.ed-flecha { position: absolute; top: 50%; transform: translateY(-50%); width: 40px; height: 56px; border: 0; background: rgb(10 10 16 / .45); color: #fff; font-size: 34px; line-height: 1; cursor: pointer; z-index: 2; }
+.ed-flecha.izq { left: 0; border-radius: 0 14px 14px 0; }
+.ed-flecha.der { right: 0; border-radius: 14px 0 0 14px; }
+.ed-puntos { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; gap: 6px; padding: 6px 9px; border-radius: 999px; background: rgb(10 10 16 / .55); pointer-events: none; z-index: 2; }
+.ed-puntos i { width: 7px; height: 7px; border-radius: 50%; background: rgb(255 255 255 / .45); }
+.ed-puntos i.activo { background: #fff; width: 18px; border-radius: 999px; }
+.ed-chip-diseno, .ed-chip-principal { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); z-index: 2; white-space: nowrap; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 800; padding: 7px 12px; border: 0; }
+.ed-chip-diseno { background: #fff; color: #101116; cursor: pointer; box-shadow: 0 4px 14px rgb(0 0 0 / .35); }
+.ed-chip-diseno[aria-pressed="false"] { background: #FFD23F; }
+.ed-chip-principal { background: var(--marca); color: #fff; pointer-events: none; }
+.foto-ver { padding: 0; border: 0; background: none; cursor: pointer; display: block; }
+.foto-item.viendo img { outline: 3px solid #FFD23F; outline-offset: 2px; }
+.foto-diseno { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.foto-diseno input { width: 20px; height: 20px; margin: 0; accent-color: var(--marca); }
+.nota-fondo { margin: 0 0 8px; padding: 8px 10px; border-radius: 12px; background: #FFF4C2; color: #5A4300; font-size: 14px; font-weight: 600; }
+.tipos-negocio { display: grid; gap: 10px; }
+.tipo-negocio { display: grid; gap: 2px; text-align: left; padding: 14px 16px; border-radius: 16px; border: 2px solid var(--borde); background: var(--superficie); color: inherit; font: inherit; cursor: pointer; }
+.tipo-negocio b { font-size: 18px; }
+.tipo-negocio span { color: var(--suave); font-size: 14px; }
+.tipo-negocio[aria-pressed="true"], .tipo-negocio:active { border-color: var(--marca); background: var(--marca-suave); }
+.ed-chip-diseno, .ed-chip-principal { bottom: auto; top: 10px; }
+.ed-chip-principal { font-size: 12px; padding: 5px 10px; opacity: .9; }

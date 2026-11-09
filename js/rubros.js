@@ -39,10 +39,23 @@ window.RUBROS = (function () {
   }
 
   // Devuelve el id del rubro más probable para un nombre de producto
-  function detectar(nombre) {
+  // Señales de que un auto o una moto es de juguete
+  const DE_JUGUETE = ['de juguete', 'de bateria', 'a bateria', 'bateria', 'montable', 'a pedal', 'a pedales', 'para chicos', 'para ninos', 'para nenes', 'para nenas', 'infantil', 'control remoto', 'radio control', 'a friccion', 'a cuerda', 'escala', 'coleccion', 'hot wheels', 'para bebe', '6v', '12v'];
+
+  // tipo: 'productos' (no vende vehículos), 'vehiculos' (concesionaria) o 'ambos'
+  function detectar(nombre, tipo) {
+    if (tipo === 'vehiculos') return 'vehiculos';
     const texto = ' ' + normalizar(nombre) + ' ';
     const palabras = texto.trim().split(' ').filter(Boolean);
     if (!palabras.length) return OTROS.id;
+    const id = puntuar(texto, palabras);
+    if (id !== 'vehiculos') return id;
+    const esJuguete = DE_JUGUETE.some((f) => texto.indexOf(' ' + f + ' ') >= 0 || (f.indexOf(' ') < 0 && palabras.indexOf(f) >= 0));
+    if (esJuguete || tipo === 'productos') return 'juguetes';
+    return id;
+  }
+
+  function puntuar(texto, palabras) {
     let mejor = null, mejorPuntos = 0;
     LISTA.forEach((r, orden) => {
       let puntos = 0;

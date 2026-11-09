@@ -36,7 +36,9 @@
   const COMBUSTIBLES = ['Nafta', 'Diésel', 'GNC', 'Nafta y GNC', 'Híbrido', 'Eléctrico'];
   const CAJAS = ['Manual', 'Automática'];
 
-  function esVehiculo(p) { return (p.rubroManual && p.rubro ? p.rubro : window.RUBROS.detectar(p.nombre)) === 'vehiculos'; }
+  function detectarRubro(nombre) { return window.RUBROS.detectar(nombre, ajustes.tipoNegocio); }
+  function esVehiculo(p) { return (p.rubroManual && p.rubro ? p.rubro : detectarRubro(p.nombre)) === 'vehiculos'; }
+  const fotoSrc = (f) => (typeof f === 'string' ? f : f && f.src);
   // "2019 · 85.000 km · Diésel · Manual"
   function detalleAuto(p, corto) {
     const a = p.auto || {};
@@ -173,6 +175,7 @@
 
   function navegar() {
     cerrarCapa();
+    if (!ajustes.tipoNegocio && vistaActual() === 'inicio') setTimeout(() => { if (!estado.capa && !ajustes.tipoNegocio) abrirCapa({ tipo: 'negocio' }); }, 300);
     let v = vistaActual();
     if (v === 'editor' && !estado.editor) { location.replace('#inicio'); v = 'inicio'; }
     document.body.dataset.vista = v;
@@ -186,7 +189,7 @@
   const ICONO_TACHO = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>';
 
   /* ================= Rubros y buscador ================= */
-  function rubroDe(p) { return p.rubroManual && p.rubro ? p.rubro : RUBROS.detectar(p.nombre); }
+  function rubroDe(p) { return p.rubroManual && p.rubro ? p.rubro : detectarRubro(p.nombre); }
 
   function filtrar(lista) {
     const f = estado.filtro;
@@ -282,7 +285,10 @@
     estado.editor = Object.assign({ fondo: 'desenfocado', letra: 'moderna', capas: {} }, p);
     estado.editor.fotos = (p.fotos || []).slice();
     estado.editor.auto = Object.assign({}, p.auto || {});
-    estado.editor.moneda = p.moneda === 'USD' ? 'USD' : 'ARS';
+    estado.editor.moneda = 'ARS';  // dólares: más adelante
+    estado.editor.fotos = (p.fotos || []).map((f) => (typeof f === 'string' ? { src: f, diseno: true } : Object.assign({}, f)));
+    estado.editor.vista = 0;       // 0 = foto principal; 1, 2… = las otras
+    estado.editor.imgsExtra = {};
     estado.editor.herramienta = (p.nombre && Number(p.precio) > 0) ? null : 'datos';
     estado.editor.firma = firmaEditor(estado.editor);
     estado.editor.capas = JSON.parse(JSON.stringify(p.capas || {}));
@@ -294,8 +300,8 @@
 
   /* ================= Editor ================= */
   const HERRAMIENTAS = [
-    ['datos', 'Texto', '<path d="M5 7V4h14v3M12 4v16M9 20h6"/>'],
     ['fotos', 'Fotos', '<rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/><path d="m3 16 4-4 4 4"/>'],
+    ['datos', 'Texto', '<path d="M5 7V4h14v3M12 4v16M9 20h6"/>'],
     ['sticker', 'Sticker', '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.6"/>'],
     ['fondo', 'Fondo', '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>'],
     ['letra', 'Letra', '<path d="M2.5 19 8 5l5.5 14M4.6 14h6.8"/><circle cx="18" cy="16" r="3"/><path d="M21 12.5V19"/>'],
@@ -306,7 +312,7 @@
   // Para saber si quedaron cambios sin guardar
   function firmaEditor(e) {
     return JSON.stringify([e.nombre || '', Number(e.precio) || 0, e.rubroManual ? e.rubro : '', e.estilo, e.fondo, e.letra, e.modoFondo, e.capas || {},
-      e.moneda || 'ARS', e.auto || {}, (e.foto || '').length, (e.fotos || []).map((f) => f.length + f.slice(-16))]);
+      e.moneda || 'ARS', e.auto || {}, (e.foto || '').length, (e.fotos || []).map((f) => fotoSrc(f).length + fotoSrc(f).slice(-16) + (f.diseno === false ? '-' : '+'))]);
   }
 
   function vistaEditor() {
@@ -320,6 +326,7 @@
       '<div class="ed-escena" id="ed-escena">' +
       '<div class="ed-foto"><div class="vista-previa" style="' + proporcion(e) + '"><canvas id="lienzo" aria-label="Vista previa. Tocá el precio o el nombre para cambiarlos; arrastralos para moverlos."></canvas>' +
       '<span class="trabajando-aviso" aria-live="polite">Recortando el producto…<small>La primera vez puede tardar unos segundos</small></span>' +
+      '<div id="ed-navfotos">' + navFotos() + '</div>' +
       '<span class="ed-ayuda" id="ed-ayuda">Tocá el precio o el nombre para cambiarlos. Arrastralos para moverlos.</span></div></div>' +
       '<nav class="ed-herramientas" aria-label="Herramientas">' + HERRAMIENTAS.map((t) =>
         '<button data-accion="herramienta" data-h="' + t[0] + '" aria-pressed="' + (h === t[0]) + '">' +
@@ -333,6 +340,49 @@
       '<div class="ed-panel-cab"><b id="ed-panel-titulo">' + esc(h ? TITULO_PANEL[h] : '') + '</b><button class="btn btn-chico" data-accion="cerrar-panel">Listo</button></div>' +
       '<div id="panel-opciones">' + (h ? panelOpciones() : '') + '</div></section>' +
       '</div>';
+  }
+
+  // Flechas, puntitos y "con precio / sin precio" cuando hay varias fotos
+  function navFotos() {
+    const e = estado.editor;
+    const n = 1 + e.fotos.length;
+    if (n < 2) return '';
+    const v = e.vista;
+    const extra = v > 0 ? e.fotos[v - 1] : null;
+    return (v > 0 ? '<button class="ed-flecha izq" data-accion="foto-anterior" aria-label="Foto anterior">‹</button>' : '') +
+      (v < n - 1 ? '<button class="ed-flecha der" data-accion="foto-siguiente" aria-label="Foto siguiente">›</button>' : '') +
+      '<div class="ed-puntos" aria-live="polite"><span class="sr">Foto ' + (v + 1) + ' de ' + n + '</span>' + Array.from({ length: n }, (x, i) => '<i' + (i === v ? ' class="activo"' : '') + '></i>').join('') + '</div>' +
+      (extra ? '<button class="ed-chip-diseno" data-accion="foto-diseno-vista" aria-pressed="' + (extra.diseno !== false) + '">' + (extra.diseno !== false ? '✓ Con precio y nombre' : 'Sin precio · tocá para ponerlo') + '</button>'
+        : '<span class="ed-chip-principal">Principal</span>');
+  }
+
+  function imgActual() {
+    const e = estado.editor;
+    if (!e.vista) return e.img;
+    const f = e.fotos[e.vista - 1];
+    return (f && e.imgsExtra[fotoSrc(f)]) || e.img;
+  }
+
+  async function cambiarVista(v) {
+    const e = estado.editor;
+    const n = 1 + e.fotos.length;
+    v = Math.max(0, Math.min(n - 1, v));
+    if (v === e.vista && v !== 0) { refrescarNavFotos(); return; }
+    e.vista = v;
+    if (v > 0) {
+      const src = fotoSrc(e.fotos[v - 1]);
+      if (!e.imgsExtra[src]) { try { e.imgsExtra[src] = await cargarImagen(src); } catch (err) { /* nada */ } }
+    }
+    refrescarNavFotos();
+    ajustarVista();
+    dibujarVista();
+    if (e.herramienta === 'fotos' || e.herramienta === 'fondo') refrescarPanel();
+  }
+
+  function refrescarNavFotos() {
+    const n = document.getElementById('ed-navfotos');
+    if (n) n.innerHTML = navFotos();
+    const c = document.getElementById('cuenta-fotos'); if (c) c.textContent = 1 + estado.editor.fotos.length;
   }
 
   // Abre (o cierra) el panel de una herramienta sin rehacer la foto
@@ -362,7 +412,7 @@
     const vista = app.querySelector('.editor2 .vista-previa');
     const e = estado.editor;
     if (!caja || !vista || !e) return;
-    const t = S.tamanoSalida(e.img);
+    const t = S.tamanoSalida(imgActual());
     const r = t.W / t.H;
     const W = caja.clientWidth, H = caja.clientHeight;
     if (!W || !H) return;
@@ -376,7 +426,7 @@
     const e = estado.editor;
     return '<div class="campos">' +
       '<div class="campo"><label for="nombre">Nombre del producto</label><input id="nombre" data-campo="nombre" value="' + esc(e.nombre) + '" placeholder="Ej: Vasos de vidrio x 6" autocomplete="off" enterkeyhint="next"></div>' +
-      '<div class="campo"><label for="precio">Precio</label><div class="con-signo con-moneda"><select id="moneda" data-campo="moneda" aria-label="Moneda"><option value="ARS"' + (e.moneda !== 'USD' ? ' selected' : '') + '>$</option><option value="USD"' + (e.moneda === 'USD' ? ' selected' : '') + '>US$</option></select><input id="precio" data-campo="precio" inputmode="numeric" value="' + esc(e.precio ? Number(e.precio).toLocaleString('es-AR') : '') + '" placeholder="5.000" autocomplete="off" enterkeyhint="done"></div></div>' +
+      '<div class="campo"><label for="precio">Precio</label><div class="con-signo"><span>$</span><input id="precio" data-campo="precio" inputmode="numeric" value="' + esc(e.precio ? Number(e.precio).toLocaleString('es-AR') : '') + '" placeholder="5.000" autocomplete="off" enterkeyhint="done"></div></div>' +
       '<div class="campo campo-rubro"><label for="rubro">Rubro <span class="detalle" id="rubro-ayuda">' + (e.rubroManual ? '(elegido por vos)' : '(lo detecta la app)') + '</span></label>' +
       '<select id="rubro" data-campo="rubro">' + RUBROS.TODOS.map((r) => '<option value="' + r.id + '"' + (r.id === rubroEditor() ? ' selected' : '') + '>' + esc(r.nombre) + '</option>').join('') + '</select></div>' +
       '</div>' + camposAuto();
@@ -398,10 +448,11 @@
   function panelFotos() {
     const e = estado.editor;
     const total = 1 + e.fotos.length;
-    return '<p class="detalle">La <b>principal</b> lleva el precio y el diseño. Las demás se comparten tal cual y se ven en tu catálogo.</p>' +
+    return '<p class="detalle">Deslizá la foto con el dedo para pasar de una a otra. La <b>principal</b> es la que se ve primero en tu catálogo. Elegí en cuáles va el precio.</p>' +
       '<div class="tira-fotos">' +
-      '<figure class="foto-item principal"><img src="' + e.foto + '" alt="Foto principal"><figcaption>Principal</figcaption></figure>' +
-      e.fotos.map((f, i) => '<figure class="foto-item"><img src="' + f + '" alt="' + esc('Foto ' + (i + 2)) + '">' +
+      '<figure class="foto-item principal' + (e.vista === 0 ? ' viendo' : '') + '"><button class="foto-ver" data-accion="foto-ver" data-v="0" aria-label="Ver la foto principal"><img src="' + e.foto + '" alt=""></button><figcaption>Principal</figcaption></figure>' +
+      e.fotos.map((f, i) => '<figure class="foto-item' + (e.vista === i + 1 ? ' viendo' : '') + '"><button class="foto-ver" data-accion="foto-ver" data-v="' + (i + 1) + '" aria-label="' + esc('Ver foto ' + (i + 2)) + '"><img src="' + fotoSrc(f) + '" alt=""></button>' +
+        '<label class="foto-diseno"><input type="checkbox" data-accion="foto-diseno" data-i="' + i + '"' + (f.diseno !== false ? ' checked' : '') + '>Con precio</label>' +
         '<button class="foto-btn" data-accion="foto-principal" data-i="' + i + '">Hacer principal</button>' +
         '<button class="foto-quitar" data-accion="foto-quitar" data-i="' + i + '" aria-label="' + esc('Quitar foto ' + (i + 2)) + '">×</button></figure>').join('') +
       (total < MAX_FOTOS ? '<div class="foto-agregar">' +
@@ -417,7 +468,7 @@
     const lista = Array.from(archivos).slice(0, Math.max(0, lugar));
     if (!lista.length) { avisar('Llegaste al máximo de ' + MAX_FOTOS + ' fotos'); return; }
     avisar(lista.length > 1 ? 'Agregando ' + lista.length + ' fotos…' : 'Agregando la foto…');
-    for (const f of lista) { try { e.fotos.push(await prepararFoto(f)); } catch (err) { /* se saltea la que no abre */ } }
+    for (const f of lista) { try { e.fotos.push({ src: await prepararFoto(f), diseno: true }); } catch (err) { /* se saltea la que no abre */ } }
     if (archivos.length > lista.length) avisar('Se agregaron ' + lista.length + '. El máximo es ' + MAX_FOTOS + ' fotos.');
     else avisar(lista.length > 1 ? lista.length + ' fotos agregadas' : 'Foto agregada');
     refrescarFotos();
@@ -425,23 +476,23 @@
 
   function refrescarFotos() {
     const e = estado.editor;
-    const c = document.getElementById('cuenta-fotos'); if (c) c.textContent = 1 + e.fotos.length;
+    if (e.vista > e.fotos.length) e.vista = e.fotos.length;
+    refrescarNavFotos();
     if (e.herramienta === 'fotos') refrescarPanel();
+    ajustarVista();
+    dibujarVista();
   }
 
   async function hacerPrincipal(i) {
     const e = estado.editor;
-    const nueva = e.fotos[i];
-    e.fotos[i] = e.foto;
+    const nueva = fotoSrc(e.fotos[i]);
+    e.fotos[i] = { src: e.foto, diseno: true };
     e.foto = nueva;
     e.img = await cargarImagen(nueva);
+    e.vista = 0;
     // el recorte era de la otra foto
     const teniaFondo = e.modoFondo !== 'original';
     e.recorte = null; e.imgRecorte = null; e.recorteCaja = null; e.modoFondo = 'original';
-    const v = app.querySelector('.editor2 .vista-previa');
-    if (v) { const st = proporcion(e).split(';'); v.style.aspectRatio = st[0].split(':')[1]; v.style.setProperty('--r', st[1].split(':')[1]); }
-    ajustarVista();
-    dibujarVista();
     refrescarFotos();
     avisar(teniaFondo ? 'Nueva foto principal. Volvé a elegir el fondo en "Fondo".' : 'Nueva foto principal');
   }
@@ -458,7 +509,7 @@
 
   function rubroEditor() {
     const e = estado.editor;
-    return e.rubroManual && e.rubro ? e.rubro : RUBROS.detectar(e.nombre);
+    return e.rubroManual && e.rubro ? e.rubro : detectarRubro(e.nombre);
   }
 
   function proporcion(e) {
@@ -486,7 +537,8 @@
         retrato: 'El producto queda nítido y lo de atrás se pone borroso, como el modo retrato.',
         diseno: 'El producto va recortado sobre el diseño que elijas abajo.'
       }[e.modoFondo];
-      return '<div class="modos-fondo" role="group" aria-label="Fondo de la foto">' + modos.map((m) =>
+      return (e.vista > 0 ? '<p class="nota-fondo">El fondo se cambia solo en la foto principal. <button class="btn-texto" data-accion="foto-ver" data-v="0">Ir a la principal</button></p>' : '') +
+        '<div class="modos-fondo" role="group" aria-label="Fondo de la foto">' + modos.map((m) =>
         '<button data-accion="modo-fondo" data-modo="' + m[0] + '" aria-pressed="' + (e.modoFondo === m[0]) + '">' + m[1] + '</button>').join('') + '</div>' +
         '<p class="detalle">' + ayuda + '</p>' +
         '<div class="estilos fondos' + (e.modoFondo === 'diseno' ? '' : ' apagados') + '" role="group" aria-label="Diseños de fondo">' + S.FONDOS.map((f) =>
@@ -538,6 +590,7 @@
   async function cambiarModoFondo(modo, fondo) {
     const e = estado.editor;
     if (fondo) { e.fondo = fondo; e._eligioFondo = true; }
+    if (e.vista) await cambiarVista(0);
     if (modo === 'original') e.modoFondo = 'original';
     else await prepararRecorte(modo);
     refrescarPanel();
@@ -585,7 +638,7 @@
       const p = puntoEnLienzo(ev, lienzo);
       if (!arrastre) {
         const k = elementoEn(p);
-        if (!k) { toqueVacio = { id: ev.pointerId, x: ev.clientX, y: ev.clientY }; return; }
+        if (!k) { toqueVacio = { id: ev.pointerId, x: ev.clientX, y: ev.clientY }; try { lienzo.setPointerCapture(ev.pointerId); } catch (err) { /* nada */ } return; }
         const antes = e.capas[k] ? Object.assign({}, e.capas[k]) : null;
         const usada = (e.capasUsadas && e.capasUsadas[k]) || { x: 0.5, y: 0.5, escala: 1 };
         e.capas[k] = Object.assign({}, usada, e.capas[k] && e.capas[k].escala ? { escala: e.capas[k].escala } : {});
@@ -618,7 +671,10 @@
     const soltar = (ev) => {
       if (toqueVacio && toqueVacio.id === ev.pointerId) {
         // tocar la foto donde no hay nada: cierra el panel para ver la foto grande
-        if (ev.type === 'pointerup' && Math.hypot(ev.clientX - toqueVacio.x, ev.clientY - toqueVacio.y) < 10 && estado.editor.herramienta) {
+        const dx = ev.clientX - toqueVacio.x, dy = ev.clientY - toqueVacio.y;
+        if (ev.type === 'pointerup' && Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.3 && estado.editor.fotos.length) {
+          cambiarVista(estado.editor.vista + (dx < 0 ? 1 : -1));
+        } else if (ev.type === 'pointerup' && Math.hypot(dx, dy) < 10 && estado.editor.herramienta) {
           if (document.activeElement) document.activeElement.blur();
           abrirHerramienta(null);
         }
@@ -698,11 +754,32 @@
     const e = estado.editor;
     const lienzo = document.getElementById('lienzo');
     if (!e || !lienzo) return;
-    const imagen = S.componer(datosEditor(), Object.assign(opcionesEditor(), { escalaVista: 0.5 }));
+    const imagen = imagenVista(e.vista, 0.5);
     if (lienzo.width !== imagen.width || lienzo.height !== imagen.height) { lienzo.width = imagen.width; lienzo.height = imagen.height; }
     lienzo.getContext('2d').drawImage(imagen, 0, 0);
     e.cajas = imagen.cajas;
     e.capasUsadas = imagen.capas;
+  }
+
+  // Arma la imagen de una foto del producto: 0 = principal; las otras sin fondo especial
+  function imagenVista(v, escala) {
+    const e = estado.editor;
+    const extra = v > 0 ? e.fotos[v - 1] : null;
+    const op = Object.assign(opcionesEditor(), escala ? { escalaVista: escala } : {});
+    if (!extra) return S.componer(datosEditor(), op);
+    const img = e.imgsExtra[fotoSrc(extra)];
+    if (!img) return S.componer(datosEditor(), op);
+    const d = Object.assign(datosEditor(), { foto: img, recorte: null, recorteCaja: null });
+    op.modoFondo = 'original';
+    if (extra.diseno !== false) return S.componer(d, op);
+    // sin precio: la foto sola, en el mismo tamaño de salida
+    const t = S.tamanoSalida(img);
+    const k = escala || 1;
+    const c = document.createElement('canvas');
+    c.width = Math.round(t.W * k); c.height = Math.round(t.H * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    c.cajas = {}; c.capas = e.capasUsadas || {};
+    return c;
   }
 
   function dibujarMiniaturas() {
@@ -733,7 +810,7 @@
       modoFondo: e.modoFondo || 'original', recortado: e.modoFondo === 'diseno',
       capas: e.capas || {},
       rubro: rubroEditor(), rubroManual: !!e.rubroManual,
-      fotos: (e.fotos || []).slice(), moneda: e.moneda === 'USD' ? 'USD' : 'ARS',
+      fotos: (e.fotos || []).map((f) => ({ src: fotoSrc(f), diseno: f.diseno !== false })), moneda: e.moneda === 'USD' ? 'USD' : 'ARS',
       auto: rubroEditor() === 'vehiculos' ? Object.assign({}, e.auto || {}) : (e.auto || {})
     };
     await ALMACEN.guardar(p);
@@ -782,7 +859,21 @@
     try { p = await guardarEditor(); } catch (err) { avisar('No se pudo guardar. Probá de nuevo.'); return; }
     // La imagen se arma antes, así "Compartir" abre al instante
     const imagen = S.aBlob(S.componer(datosEditor(), opcionesEditor()));
-    abrirCapa({ tipo: 'redes', producto: p, imagen: imagen, elegidas: ajustes.redes.slice(), paso: -1, todas: true });
+    const extras = armarExtras();
+    abrirCapa({ tipo: 'redes', producto: p, imagen: imagen, extras: extras, elegidas: ajustes.redes.slice(), paso: -1, todas: true });
+  }
+
+  // Imágenes de las otras fotos (con el precio puesto si así se eligió)
+  async function armarExtras() {
+    const e = estado.editor;
+    const blobs = [];
+    for (let i = 0; i < e.fotos.length; i++) {
+      const f = e.fotos[i], src = fotoSrc(f);
+      if (f.diseno === false) { blobs.push(await (await fetch(src)).blob()); continue; }
+      if (!e.imgsExtra[src]) e.imgsExtra[src] = await cargarImagen(src);
+      blobs.push(await S.aBlob(imagenVista(i + 1)));
+    }
+    return blobs;
   }
 
   function abrirCapa(datos) {
@@ -810,6 +901,13 @@
         '<p class="detalle">Se borra de "Tus productos" y de tu catálogo. No se puede deshacer.</p>';
       pie = '<button class="btn btn-peligro-lleno btn-ancho" data-accion="confirmar-borrar">Sí, eliminar</button>' +
         '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Cancelar</button>';
+    }
+    else if (c.tipo === 'negocio') {
+      titulo = '¿Qué vas a vender?';
+      const op = [['productos', 'Productos', 'Ropa, bazar, juguetes, accesorios, tecnología…'], ['vehiculos', 'Autos y motos', 'Concesionaria o agencia de vehículos'], ['ambos', 'Las dos cosas', 'Productos y también autos o motos']];
+      cuerpo = '<p class="detalle">Así la app ordena mejor tus productos por rubro. Lo podés cambiar cuando quieras en Ajustes.</p>' +
+        '<div class="tipos-negocio">' + op.map((o) => '<button class="tipo-negocio" data-accion="elegir-negocio" data-tipo="' + o[0] + '"' + (ajustes.tipoNegocio === o[0] ? ' aria-pressed="true"' : '') + '><b>' + o[1] + '</b><span>' + o[2] + '</span></button>').join('') + '</div>';
+      pie = '';
     }
     else if (c.tipo === 'salir') {
       titulo = '¿Guardar los cambios?';
@@ -891,11 +989,9 @@
     const nombre = (normalizar(c.producto.nombre).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'producto') + '.jpg';
     const archivo = new File([blob], nombre, { type: 'image/jpeg' });
     const archivos = [archivo];
-    if (c.todas && c.producto.fotos && c.producto.fotos.length) {
-      for (let i = 0; i < c.producto.fotos.length; i++) {
-        const b = await (await fetch(c.producto.fotos[i])).blob();
-        archivos.push(new File([b], nombre.replace(/\.jpg$/, '-' + (i + 2) + '.jpg'), { type: 'image/jpeg' }));
-      }
+    if (c.todas && c.extras) {
+      const bs = await c.extras;
+      bs.forEach((b, i) => archivos.push(new File([b], nombre.replace(/\.jpg$/, '-' + (i + 2) + '.jpg'), { type: 'image/jpeg' })));
     }
 
     if (puedeCompartirVarios(archivos)) {
@@ -980,7 +1076,7 @@
   // Ficha del producto con todas sus fotos (lo que ve el cliente al tocar un producto)
   function hojaDetalle() {
     const p = estado.capa.producto;
-    const fotos = [p.foto].concat(p.fotos || []);
+    const fotos = [p.foto].concat((p.fotos || []).map(fotoSrc));
     const a = p.auto || {};
     const datos = esVehiculo(p) ? [['Año', a.anio], ['Kilómetros', a.km !== undefined && a.km !== '' ? Number(a.km).toLocaleString('es-AR') + ' km' : ''], ['Combustible', a.combustible], ['Caja', a.caja]].filter((d) => d[1]) : [];
     const extras = extrasAuto(p);
@@ -1012,6 +1108,9 @@
   function vistaAjustes() {
     return '<header class="barra-top"><a class="btn-texto" href="#inicio">← Volver</a><b>Ajustes</b><span></span></header>' +
       '<main class="pagina ajustes">' +
+      '<div class="campo"><label for="a-tipo">¿Qué vendés?</label><select id="a-tipo" data-ajuste="tipoNegocio">' +
+      [['productos', 'Productos'], ['vehiculos', 'Autos y motos'], ['ambos', 'Las dos cosas']].map((o) => '<option value="' + o[0] + '"' + ((ajustes.tipoNegocio || 'productos') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') +
+      '</select><span class="nota">Con "Productos", un auto o una moto se toma como juguete.</span></div>' +
       '<div class="campo"><label for="a-negocio">Nombre de tu negocio</label><input id="a-negocio" data-ajuste="negocio" value="' + esc(ajustes.negocio) + '"></div>' +
       '<div class="campo"><label for="a-wa">Tu WhatsApp para recibir pedidos</label><input id="a-wa" data-ajuste="whatsapp" inputmode="tel" value="' + esc(ajustes.whatsapp) + '" placeholder="Ej: 5491123456789"><span class="nota">Con 549 y el código de área, sin 0 ni 15.</span></div>' +
       '<section class="caja"><h2>Logo de tu negocio</h2>' +
@@ -1072,6 +1171,22 @@
     },
     guardar: () => { guardarSolo(); },
     'foto-principal': (el) => hacerPrincipal(Number(el.dataset.i)),
+    'foto-ver': (el) => cambiarVista(Number(el.dataset.v)),
+    'foto-anterior': () => cambiarVista(estado.editor.vista - 1),
+    'foto-siguiente': () => cambiarVista(estado.editor.vista + 1),
+    'foto-diseno-vista': () => {
+      const e = estado.editor; const f = e.vista > 0 && e.fotos[e.vista - 1];
+      if (!f) return;
+      f.diseno = f.diseno === false;
+      refrescarNavFotos(); dibujarVista();
+      if (e.herramienta === 'fotos') refrescarPanel();
+    },
+    'elegir-negocio': (el) => {
+      ajustes.tipoNegocio = el.dataset.tipo; guardarAjustes();
+      cerrarCapa();
+      avisar({ productos: 'Listo: vas a vender productos', vehiculos: 'Listo: vas a vender autos y motos', ambos: 'Listo: productos, autos y motos' }[el.dataset.tipo]);
+      navegar();
+    },
     'foto-quitar': (el) => {
       const e = estado.editor;
       const quitada = e.fotos.splice(Number(el.dataset.i), 1)[0];
@@ -1201,6 +1316,12 @@
       dibujarVista();
       return;
     }
+    if (el.dataset.accion === 'foto-diseno' && estado.editor) {
+      const f = estado.editor.fotos[Number(el.dataset.i)];
+      if (f) { f.diseno = el.checked; refrescarNavFotos(); dibujarVista(); }
+      return;
+    }
+    if (el.dataset.ajuste === 'tipoNegocio') { ajustes.tipoNegocio = el.value; guardarAjustes(); avisar('Guardado'); return; }
     if (el.dataset.accion === 'mas-fotos' && el.files && el.files.length && estado.editor) { const fs = Array.from(el.files); el.value = ''; agregarFotos(fs); return; }
     if (el.dataset.accion === 'foto' && el.files && el.files[0]) { nuevaFoto(el.files[0]); el.value = ''; return; }
     if (el.dataset.accion === 'logo' && el.files && el.files[0]) { guardarLogo(el.files[0]).then(() => { if (vistaActual() === 'ajustes') app.innerHTML = vistaAjustes(); }); el.value = ''; return; }
@@ -1227,6 +1348,7 @@
     navigator.serviceWorker.register('sw.js').catch(() => { /* en la demo no se puede */ });
   }
 
+  // En Netlify gratis aparece su cartel abajo: dejamos lugar para que no tape botones
   if (/\.netlify\.app$/.test(location.hostname)) document.body.classList.add('con-insignia');
   aplicarColor();
   Promise.all([cargarLogo(), cargarProductos()]).then(navegar, navegar);
