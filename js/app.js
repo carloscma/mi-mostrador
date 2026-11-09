@@ -341,6 +341,7 @@
     return '<div class="editor2' + (h ? ' con-panel' : '') + '">' +
       '<header class="ed-top"><a class="ed-volver" href="#inicio" data-accion="salir-editor" aria-label="Volver al inicio"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>' +
       '<span></span>' +
+      '<button class="ed-descargar" data-accion="descargar-editor" aria-label="Guardar las fotos en el celular" title="Guardar las fotos en el celular"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg></button>' +
       '<button class="btn ed-guardar" data-accion="guardar">Guardar</button>' +
       '<button class="btn btn-marca ed-compartir" data-accion="compartir">Compartir</button></header>' +
       '<div class="ed-escena" id="ed-escena">' +
@@ -891,6 +892,24 @@
     return true;
   }
 
+  // Guarda en el celular todas las fotos del producto, listas con el precio (y guarda el producto)
+  async function descargarDesdeEditor() {
+    const e = estado.editor;
+    if (faltanDatos()) return;
+    avisar('Preparando las fotos…');
+    let p;
+    try { p = await guardarEditor(); } catch (err) { avisar('No se pudo guardar. Probá de nuevo.'); return; }
+    try {
+      const nombre = (normalizar(p.nombre).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'producto') + '.jpg';
+      const archivos = [new File([await S.aBlob(S.componer(datosEditor(), opcionesEditor()))], nombre, { type: 'image/jpeg' })];
+      (await armarExtras()).forEach((b, i) => archivos.push(new File([b], nombre.replace(/\.jpg$/, '-' + (i + 2) + '.jpg'), { type: 'image/jpeg' })));
+      await descargar(archivos);
+      copiar(textoRed(p, 'facebook'));
+      avisar((archivos.length > 1 ? archivos.length + ' fotos guardadas' : 'Foto guardada') + ' en Descargas. El texto quedó copiado.');
+    } catch (err) { if (!err || err.code !== 'declined') avisar('No se pudieron guardar las fotos.'); }
+    void e;
+  }
+
   async function abrirCompartir() {
     const e = estado.editor;
     if (faltanDatos()) return;
@@ -948,6 +967,7 @@
         '<div class="lista-opciones">' +
         '<button class="opcion" data-accion="abrir" data-id="' + esc(pr.id) + '">Editar</button>' +
         '<button class="opcion" data-accion="opcion-compartir" data-id="' + esc(pr.id) + '">Compartir</button>' +
+        '<button class="opcion" data-accion="opcion-descargar" data-id="' + esc(pr.id) + '">Guardar las fotos en el celular</button>' +
         '<button class="opcion" data-accion="duplicar" data-id="' + esc(pr.id) + '">Duplicar (para uno parecido)</button>' +
         '<button class="opcion peligro" data-accion="pedir-borrar" data-id="' + esc(pr.id) + '">' + ICONO_TACHO + ' Eliminar</button></div>';
       pie = '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Cancelar</button>';
@@ -1372,6 +1392,16 @@
       setTimeout(() => { abrirHerramienta('datos', 'nombre'); avisar('Copia lista: cambiá lo que sea distinto'); }, 400);
     },
     'exportar': () => exportarCopia(),
+    'descargar-editor': () => descargarDesdeEditor(),
+    'opcion-descargar': async (el) => {
+      const p = estado.productos.find((x) => x.id === el.dataset.id);
+      cerrarCapa();
+      if (!p) return;
+      await abrirEditor(p);
+      await new Promise((ok) => setTimeout(ok, 350));
+      await S.prepararFuentes().catch(() => null);
+      descargarDesdeEditor();
+    },
     'guardar-fotos': () => guardarFotosEnCelular(),
     opciones: (el) => { const p = estado.productos.find((x) => x.id === el.dataset.id); if (p) abrirCapa({ tipo: 'opciones', producto: p }); },
     'opcion-compartir': async (el) => {
