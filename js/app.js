@@ -281,7 +281,7 @@
       '<div class="camara-botones"><label class="btn-camara" for="foto-camara"><span class="icono-camara" aria-hidden="true"></span>Sacar foto</label>' +
       '<input class="oculto" id="foto-camara" type="file" accept="image/*" capture="environment" data-accion="foto">' +
       '<label class="btn btn-galeria" for="foto-galeria">Elegir de la galería</label>' +
-      '<input class="oculto" id="foto-galeria" type="file" accept="image/*" data-accion="foto"></div>' +
+      '<input class="oculto" id="foto-galeria" type="file" accept="image/*" multiple data-accion="foto"></div>' +
       '</section>' +
       '<section class="seccion">' +
       '<div class="fila"><h2>Tus productos <small>' + (ps.length || '') + '</small></h2>' +
@@ -291,11 +291,19 @@
       '</main>';
   }
 
-  async function nuevaFoto(archivo) {
-    avisar('Preparando la foto…');
+  // Primera foto = principal; las demás (hasta 10 en total) van al mismo producto
+  async function nuevaFoto(archivo, otras) {
+    otras = otras || [];
+    const max = 10;
+    const sobran = Math.max(0, otras.length - (max - 1));
+    otras = otras.slice(0, max - 1);
+    avisar(otras.length ? 'Preparando ' + (otras.length + 1) + ' fotos…' : 'Preparando la foto…');
     try {
       const foto = await prepararFoto(archivo);
-      abrirEditor({ id: null, foto: foto, nombre: '', precio: '', estilo: ajustes.estilo || 'estrella', fondo: ajustes.fondo, letra: ajustes.letra, posicion: 'abajo-der', codigo: siguienteCodigo() });
+      const fotos = [];
+      for (const f of otras) { try { fotos.push({ src: await prepararFoto(f), diseno: true }); } catch (e) { /* se saltea la que no abre */ } }
+      abrirEditor({ id: null, foto: foto, fotos: fotos, nombre: '', precio: '', estilo: ajustes.estilo || 'estrella', fondo: ajustes.fondo, letra: ajustes.letra, posicion: 'abajo-der', codigo: siguienteCodigo() });
+      if (sobran) setTimeout(() => avisar('Se cargaron 10 fotos (el máximo al elegir). Podés sumar más desde "Fotos".'), 600);
     } catch (e) {
       avisar('No pudimos abrir esa foto. Probá con otra.');
     }
@@ -910,15 +918,42 @@
     void e;
   }
 
+  // Compartir: abre directo el menú del celular con todas las fotos y el texto
   async function abrirCompartir() {
-    const e = estado.editor;
     if (faltanDatos()) return;
     let p;
+    avisar('Preparando las fotos…');
     try { p = await guardarEditor(); } catch (err) { avisar('No se pudo guardar. Probá de nuevo.'); return; }
-    // La imagen se arma antes, así "Compartir" abre al instante
-    const imagen = S.aBlob(S.componer(datosEditor(), opcionesEditor()));
-    const extras = armarExtras();
-    abrirCapa({ tipo: 'redes', producto: p, imagen: imagen, extras: extras, elegidas: ajustes.redes.slice(), paso: -1, todas: true });
+    let archivos;
+    try {
+      const nombre = (normalizar(p.nombre).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'producto') + '.jpg';
+      archivos = [new File([await S.aBlob(S.componer(datosEditor(), opcionesEditor()))], nombre, { type: 'image/jpeg' })];
+      (await armarExtras()).forEach((b, i) => archivos.push(new File([b], nombre.replace(/\.jpg$/, '-' + (i + 2) + '.jpg'), { type: 'image/jpeg' })));
+    } catch (err) { avisar('No se pudieron preparar las fotos.'); return; }
+    const texto = textoRed(p, 'facebook');
+    copiar(texto); // por si la red no toma el texto (Instagram, por ejemplo)
+    await compartirArchivos(archivos, texto);
+  }
+
+  async function compartirArchivos(archivos, texto) {
+    if (puedeCompartirVarios(archivos)) {
+      try {
+        await navigator.share({ files: archivos, text: texto });
+        cerrarCapa();
+        avisar('¡Listo! El texto también quedó copiado, por si tenés que pegarlo.');
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;                 // cerró el menú sin elegir
+        if (e && e.name === 'NotAllowedError' && !(estado.capa && estado.capa.tipo === 'compartir-listo')) {
+          // tardó en preparar las fotos y el celular pide otro toque
+          abrirCapa({ tipo: 'compartir-listo', archivos: archivos, texto: texto });
+          return;
+        }
+      }
+    }
+    // sin menú de compartir (computadora o navegador viejo): se descargan
+    try { await descargar(archivos); cerrarCapa(); avisar((archivos.length > 1 ? archivos.length + ' fotos guardadas' : 'Foto guardada') + ' en Descargas. El texto quedó copiado.'); }
+    catch (e) { if (!e || e.code !== 'declined') avisar('No se pudieron guardar las fotos.'); }
   }
 
   // Imágenes de las otras fotos (con el precio puesto si así se eligió)
@@ -959,6 +994,11 @@
         '<p class="detalle">Se borra de "Tus productos" y de tu catálogo. No se puede deshacer.</p>';
       pie = '<button class="btn btn-peligro-lleno btn-ancho" data-accion="confirmar-borrar">Sí, eliminar</button>' +
         '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Cancelar</button>';
+    }
+    else if (c.tipo === 'compartir-listo') {
+      titulo = 'Fotos listas';
+      cuerpo = '<p class="detalle">' + (c.archivos.length > 1 ? 'Las ' + c.archivos.length + ' fotos están listas.' : 'La foto está lista.') + ' Tocá Compartir y elegí dónde publicarla.</p>';
+      pie = '<button class="btn btn-marca btn-ancho" data-accion="compartir-ya">Compartir</button>';
     }
     else if (c.tipo === 'opciones') {
       const pr = c.producto;
@@ -1392,6 +1432,7 @@
       setTimeout(() => { abrirHerramienta('datos', 'nombre'); avisar('Copia lista: cambiá lo que sea distinto'); }, 400);
     },
     'exportar': () => exportarCopia(),
+    'compartir-ya': () => { const c = estado.capa; if (c && c.archivos) compartirArchivos(c.archivos, c.texto); },
     'descargar-editor': () => descargarDesdeEditor(),
     'opcion-descargar': async (el) => {
       const p = estado.productos.find((x) => x.id === el.dataset.id);
@@ -1633,7 +1674,7 @@
     if (el.dataset.accion === 'importar' && el.files && el.files[0]) { const f = el.files[0]; el.value = ''; importarCopia(f); return; }
     if (el.dataset.ajuste === 'tipoNegocio') { ajustes.tipoNegocio = el.value; guardarAjustes(); avisar('Guardado'); return; }
     if (el.dataset.accion === 'mas-fotos' && el.files && el.files.length && estado.editor) { const fs = Array.from(el.files); el.value = ''; agregarFotos(fs); return; }
-    if (el.dataset.accion === 'foto' && el.files && el.files[0]) { nuevaFoto(el.files[0]); el.value = ''; return; }
+    if (el.dataset.accion === 'foto' && el.files && el.files[0]) { const fs = Array.from(el.files); el.value = ''; nuevaFoto(fs[0], fs.slice(1)); return; }
     if (el.dataset.accion === 'logo' && el.files && el.files[0]) { guardarLogo(el.files[0]).then(() => { if (vistaActual() === 'ajustes') app.innerHTML = vistaAjustes(); }); el.value = ''; return; }
     if (el.dataset.accion === 'todas-fotos' && estado.capa) { estado.capa.todas = el.checked; return; }
     if (el.dataset.accion === 'red' && estado.capa) {
