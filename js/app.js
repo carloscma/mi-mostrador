@@ -51,6 +51,7 @@
     if (!esVehiculo(p)) return [];
     return [a.financiacion ? 'Financiación' : '', a.permuta ? 'Acepta permuta' : ''].filter(Boolean);
   }
+  function incompleto(p) { return !String(p.nombre || '').trim() || !(Number(p.precio) > 0); }
   function cantidadFotos(p) { return 1 + ((p.fotos && p.fotos.length) || 0); }
   // Total del pedido separado por moneda: "$ 25.000 + US$ 1.200"
   function totalTexto(lineas) {
@@ -171,11 +172,12 @@
   /* ---------------- Navegación ---------------- */
   function vistaActual() {
     const h = location.hash.replace(/^#/, '');
-    return ['editor', 'catalogo', 'ajustes', 'precios'].indexOf(h) >= 0 ? h : 'inicio';
+    return ['editor', 'catalogo', 'ajustes', 'precios', 'completar'].indexOf(h) >= 0 ? h : 'inicio';
   }
 
   function navegar() {
     cerrarCapa();
+    guardarPendientes();
     if (!ajustes.tipoNegocio && vistaActual() === 'inicio') setTimeout(() => { if (!estado.capa && !ajustes.tipoNegocio) abrirCapa({ tipo: 'negocio' }); }, 300);
     let v = vistaActual();
     if (v === 'editor' && !estado.editor) { location.replace('#inicio'); v = 'inicio'; }
@@ -184,6 +186,7 @@
     else if (v === 'catalogo') app.innerHTML = vistaCatalogo();
     else if (v === 'ajustes') app.innerHTML = vistaAjustes();
     else if (v === 'precios') app.innerHTML = vistaPrecios();
+    else if (v === 'completar') app.innerHTML = vistaCompletar();
     else app.innerHTML = vistaInicio();
     window.scrollTo(0, 0);
   }
@@ -259,9 +262,9 @@
       '<img src="' + p.foto + '" alt="" loading="lazy">' +
       (cantidadFotos(p) > 1 ? '<span class="fotos-chip">' + ICONO_FOTOS + cantidadFotos(p) + '</span>' : '') + '</button>' +
       '<button class="btn-opciones" data-accion="opciones" data-id="' + esc(p.id) + '" aria-label="' + esc('Opciones de ' + p.nombre) + '">' + ICONO_PUNTOS + '</button>' +
-      '<div class="tarjeta-info"><span class="tarjeta-nombre">' + esc(p.nombre) + '</span>' +
+      '<div class="tarjeta-info"><span class="tarjeta-nombre">' + esc(p.nombre || 'Sin nombre') + '</span>' +
       '<span class="tarjeta-rubro">' + esc(RUBROS.nombreDe(rubroDe(p))) + '</span>' +
-      '<span class="tarjeta-precio">' + esc(precioDe(p)) + '</span></div>' +
+      (incompleto(p) ? '<span class="falta">Falta completar</span>' : '<span class="tarjeta-precio">' + esc(precioDe(p)) + '</span>') + '</div>' +
       '</article>').join('') + '</div>';
   }
 
@@ -282,7 +285,10 @@
       '<input class="oculto" id="foto-camara" type="file" accept="image/*" capture="environment" data-accion="foto">' +
       '<label class="btn btn-galeria" for="foto-galeria">Elegir de la galería</label>' +
       '<input class="oculto" id="foto-galeria" type="file" accept="image/*" multiple data-accion="foto"></div>' +
+      '<label class="btn-muchos" for="carga-rapida"><b>¿Ya tenés las fotos?</b> Cargá muchos productos juntos →</label>' +
+      '<input class="oculto" id="carga-rapida" type="file" accept="image/*" multiple data-accion="carga-rapida">' +
       '</section>' +
+      (ps.some(incompleto) ? '<a class="aviso-completar" href="#completar"><b>' + ps.filter(incompleto).length + '</b> ' + (ps.filter(incompleto).length === 1 ? 'producto sin nombre o precio' : 'productos sin nombre o precio') + '<span>Completar →</span></a>' : '') +
       '<section class="seccion">' +
       '<div class="fila"><h2>Tus productos <small>' + (ps.length || '') + '</small></h2>' +
       '<div class="accesos">' + (ps.length ? '<a class="acceso" href="#precios">Precios</a>' : '') + '<a class="acceso" href="#catalogo">Ver catálogo</a></div></div>' +
@@ -600,9 +606,10 @@
   function panelSticker() {
     const e = estado.editor;
     return deslizador('precio', 'Tamaño del precio') +
-      '<div class="estilos" role="group" aria-label="Estilos de sticker">' + S.ESTILOS.map((st) =>
+      S.GRUPOS.map((g) => '<h3 class="grupo-titulo">' + g[1] + '</h3>' +
+        '<div class="estilos" role="group" aria-label="' + g[1] + '">' + S.ESTILOS.filter((st) => (st.grupo || 'precio') === g[0]).map((st) =>
         '<button class="estilo" data-accion="estilo" data-estilo="' + st.id + '" aria-pressed="' + (e.estilo === st.id) + '">' +
-        '<canvas width="240" height="240" data-mini="' + st.id + '" aria-hidden="true"></canvas><span>' + esc(st.nombre) + '</span></button>').join('') + '</div>';
+        '<canvas width="240" height="240" data-mini="' + st.id + '" aria-hidden="true"></canvas><span>' + esc(st.nombre) + '</span></button>').join('') + '</div>').join('');
   }
 
   // Recorta el producto (si hace falta) y pasa al modo pedido: 'diseno' o 'retrato'
@@ -1198,7 +1205,7 @@
   }
 
   function grillaCatalogo() {
-    const ps = filtrar(estado.productos);
+    const ps = filtrar(estado.productos.filter((p) => !incompleto(p)));
     if (!ps.length) return estado.productos.length ? sinResultados() : '<p class="vacio">Todavía no hay productos.</p>';
     return '<div class="grilla catalogo">' + ps.map((p) => {
       const det = detalleAuto(p, true);
@@ -1248,6 +1255,98 @@
       '<div class="campo"><label for="pedido-nombre">Tu nombre</label><input id="pedido-nombre" data-accion="pedido-nombre" value="' + esc(c.nombre || '') + '" autocomplete="name"></div>',
       '<a class="btn btn-wa btn-ancho" id="enviar-pedido" href="' + esc(link) + '" target="_blank" rel="noopener">Enviar pedido por WhatsApp</a>' +
       (ajustes.whatsapp ? '' : '<p class="nota">El negocio todavía no cargó su WhatsApp en Ajustes: vas a poder elegir a quién mandarlo.</p>')];
+  }
+
+  /* ================= Carga rápida de muchos productos ================= */
+  const MAX_CARGA = 50;
+  estado.lote = [];   // ids cargados en la última carga rápida (se muestran aunque ya estén completos)
+
+  async function cargaRapida(archivos) {
+    await guardarPendientes();
+    const lista = archivos.slice(0, MAX_CARGA);
+    const sobran = archivos.length - lista.length;
+    const ids = [];
+    let codigo = parseInt(siguienteCodigo(), 10);
+    const base = Date.now();
+    for (let i = 0; i < lista.length; i++) {
+      avisar('Cargando ' + (i + 1) + ' de ' + lista.length + '…');
+      try {
+        const foto = await prepararFoto(lista[i]);
+        const p = { id: 'p' + base.toString(36) + i.toString(36) + Math.random().toString(36).slice(2, 5), foto: foto, fotos: [], nombre: '', precio: 0,
+          estilo: ajustes.estilo || 'estrella', fondo: ajustes.fondo, letra: ajustes.letra, posicion: 'abajo-der', modoFondo: 'original',
+          codigo: String(codigo++).padStart(2, '0'), fecha: base + (lista.length - i), capas: {} };
+        await ALMACEN.guardar(p);
+        ids.push(p.id);
+      } catch (e) { /* se saltea la foto que no abre */ }
+    }
+    estado.productos = await ALMACEN.todos();
+    estado.lote = ids;
+    avisar(ids.length + (ids.length === 1 ? ' producto cargado' : ' productos cargados') + (sobran ? '. El máximo es ' + MAX_CARGA + ' por vez: cargá el resto después.' : '. Ahora poneles nombre y precio.'));
+    if (vistaActual() === 'completar') app.innerHTML = vistaCompletar(); else location.hash = 'completar';
+  }
+
+  function listaCompletar() {
+    // en el orden en que se cargaron (la primera foto elegida, arriba)
+    const ps = estado.productos.filter((p) => incompleto(p) || estado.lote.indexOf(p.id) >= 0);
+    return ps.sort((a, b) => (b.fecha || 0) - (a.fecha || 0));
+  }
+
+  function vistaCompletar() {
+    const ps = listaCompletar();
+    const faltan = ps.filter(incompleto).length;
+    return '<header class="barra-top"><a class="btn-texto" href="#inicio">← Inicio</a><b>Completar productos</b><span></span></header>' +
+      '<main class="pagina completar">' +
+      '<p class="detalle">Escribí el nombre y el precio de cada uno. Se guarda solo. Si dos fotos son del mismo producto, tocá <b>Unir con el de arriba</b>.</p>' +
+      '<p class="estado-completar" id="estado-completar">' + estadoCompletar(faltan, ps.length) + '</p>' +
+      (ps.length ? '<div class="lista-completar">' + ps.map((p, i) =>
+        '<div class="fila-completar' + (incompleto(p) ? ' falta-fila' : '') + '" data-fila="' + esc(p.id) + '">' +
+        '<div class="fc-foto"><img src="' + p.foto + '" alt="">' + (cantidadFotos(p) > 1 ? '<span class="fotos-chip">' + ICONO_FOTOS + cantidadFotos(p) + '</span>' : '') + '</div>' +
+        '<div class="fc-campos">' +
+        '<input data-completar="nombre" data-id="' + esc(p.id) + '" value="' + esc(p.nombre || '') + '" placeholder="Nombre del producto" aria-label="Nombre" autocomplete="off" enterkeyhint="next">' +
+        '<div class="con-signo"><span>$</span><input data-completar="precio" data-id="' + esc(p.id) + '" inputmode="numeric" value="' + (Number(p.precio) > 0 ? esc(Number(p.precio).toLocaleString('es-AR')) : '') + '" placeholder="Precio" aria-label="Precio" autocomplete="off" enterkeyhint="next"></div>' +
+        '<span class="fc-rubro" id="rubro-' + esc(p.id) + '">' + (p.nombre ? esc(RUBROS.nombreDe(rubroDe(p))) : '') + '</span>' +
+        '</div>' +
+        '<div class="fc-acciones">' + (i > 0 ? '<button class="btn-texto" data-accion="unir" data-id="' + esc(p.id) + '" data-con="' + esc(ps[i - 1].id) + '">Unir con el de arriba</button>' : '') +
+        '<button class="btn-texto" data-accion="abrir" data-id="' + esc(p.id) + '">Editar diseño</button></div>' +
+        '</div>').join('') + '</div>' : '<p class="vacio">No hay productos para completar.</p>') +
+      '<label class="btn btn-claro btn-ancho" for="carga-rapida-2">+ Cargar más fotos</label>' +
+      '<input class="oculto" id="carga-rapida-2" type="file" accept="image/*" multiple data-accion="carga-rapida">' +
+      '<a class="btn btn-marca btn-ancho" href="#inicio">Listo</a>' +
+      '</main>';
+  }
+
+  function estadoCompletar(faltan, total) {
+    if (!total) return '';
+    return faltan ? '<b>' + faltan + '</b> de ' + total + ' sin nombre o precio. Los que faltan no se muestran en el catálogo.' : '✓ Todos completos. Ya podés compartirlos.';
+  }
+
+  // Se guarda un ratito después de escribir; antes de recargar la lista se guarda todo lo pendiente
+  const guardadoPendiente = {};
+  function guardarCompletar(p) {
+    if (guardadoPendiente[p.id]) clearTimeout(guardadoPendiente[p.id].t);
+    guardadoPendiente[p.id] = { p: p, t: setTimeout(() => { delete guardadoPendiente[p.id]; ALMACEN.guardar(p); }, 400) };
+  }
+  async function guardarPendientes() {
+    const ps = Object.keys(guardadoPendiente).map((id) => { clearTimeout(guardadoPendiente[id].t); const p = guardadoPendiente[id].p; delete guardadoPendiente[id]; return p; });
+    for (const p of ps) await ALMACEN.guardar(p);
+  }
+
+  async function unirConElDeArriba(id, con) {
+    await guardarPendientes();
+    const de = estado.productos.find((x) => x.id === id);
+    const a = estado.productos.find((x) => x.id === con);
+    if (!de || !a) return;
+    a.fotos = (a.fotos || []).map((f) => (typeof f === 'string' ? { src: f, diseno: true } : f));
+    a.fotos.push({ src: de.foto, diseno: true });
+    (de.fotos || []).forEach((f) => a.fotos.push(typeof f === 'string' ? { src: f, diseno: true } : f));
+    a.fotos = a.fotos.slice(0, MAX_FOTOS - 1);
+    if (!a.nombre && de.nombre) a.nombre = de.nombre;
+    if (!(Number(a.precio) > 0) && Number(de.precio) > 0) a.precio = de.precio;
+    await ALMACEN.guardar(a);
+    await ALMACEN.borrar(de.id);
+    estado.productos = await ALMACEN.todos();
+    app.innerHTML = vistaCompletar();
+    avisar('Unidas: ahora es un producto con ' + cantidadFotos(a) + ' fotos');
   }
 
   /* ================= Precios: subir o bajar por % y de a uno ================= */
@@ -1432,6 +1531,7 @@
       setTimeout(() => { abrirHerramienta('datos', 'nombre'); avisar('Copia lista: cambiá lo que sea distinto'); }, 400);
     },
     'exportar': () => exportarCopia(),
+    unir: (el) => unirConElDeArriba(el.dataset.id, el.dataset.con),
     'compartir-ya': () => { const c = estado.capa; if (c && c.archivos) compartirArchivos(c.archivos, c.texto); },
     'descargar-editor': () => descargarDesdeEditor(),
     'opcion-descargar': async (el) => {
@@ -1573,6 +1673,23 @@
   document.addEventListener('input', (ev) => {
     const el = ev.target;
     if (el.dataset.buscar) { estado.filtro.q = el.value; refrescarListas(); return; }
+    if (el.dataset.completar) {
+      const p = estado.productos.find((x) => x.id === el.dataset.id);
+      if (!p) return;
+      if (el.dataset.completar === 'precio') {
+        const n = el.value.replace(/\D/g, '').slice(0, 10);
+        el.value = n ? Number(n).toLocaleString('es-AR') : '';
+        p.precio = n ? Number(n) : 0;
+      } else {
+        p.nombre = el.value;
+        const r = document.getElementById('rubro-' + p.id); if (r) r.textContent = p.nombre.trim() ? RUBROS.nombreDe(rubroDe(p)) : '';
+      }
+      const fila = el.closest('.fila-completar'); if (fila) fila.classList.toggle('falta-fila', incompleto(p));
+      const ps = listaCompletar();
+      const est = document.getElementById('estado-completar'); if (est) est.innerHTML = estadoCompletar(ps.filter(incompleto).length, ps.length);
+      guardarCompletar(p);
+      return;
+    }
     if (el.dataset.aumento === 'porcentaje') {
       el.value = el.value.replace(/[^\d.,]/g, '').slice(0, 6);
       aumento.porcentaje = el.value;
@@ -1671,6 +1788,7 @@
       return;
     }
     if (el.dataset.orden !== undefined && el.tagName === 'SELECT') { estado.orden = el.value; refrescarListas(); return; }
+    if (el.dataset.accion === 'carga-rapida' && el.files && el.files.length) { const fs = Array.from(el.files); el.value = ''; cargaRapida(fs); return; }
     if (el.dataset.accion === 'importar' && el.files && el.files[0]) { const f = el.files[0]; el.value = ''; importarCopia(f); return; }
     if (el.dataset.ajuste === 'tipoNegocio') { ajustes.tipoNegocio = el.value; guardarAjustes(); avisar('Guardado'); return; }
     if (el.dataset.accion === 'mas-fotos' && el.files && el.files.length && estado.editor) { const fs = Array.from(el.files); el.value = ''; agregarFotos(fs); return; }

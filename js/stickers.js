@@ -18,19 +18,37 @@ window.STICKERS = (function () {
 
   // Lista de estilos que ve el vendedor. "ancho" = cuánto ocupa a lo ancho, en radios.
   const ESTILOS = [
-    { id: 'estrella', nombre: 'Estrella', ancho: 1 },
-    { id: 'etiqueta', nombre: 'Etiqueta', ancho: 1.15 },
-    { id: 'oferta', nombre: 'Oferta', ancho: 1 },
-    { id: 'circulo', nombre: 'Círculo', ancho: 1 },
-    { id: 'cartel', nombre: 'Cartel', ancho: 1.15 },
-    { id: 'burbuja', nombre: 'Globo', ancho: 1.2 },
-    { id: 'neon', nombre: 'Neón', ancho: 1.25 },
-    { id: 'liquidacion', nombre: 'Liquidación', ancho: 1.2 },
-    { id: 'dosxuno', nombre: '2x1', ancho: 1.05 },
-    { id: 'nuevo', nombre: 'Nuevo', ancho: 1 },
-    { id: 'ultimas', nombre: 'Últimas unidades', ancho: 1.2 },
-    { id: 'banda', nombre: 'Banda', ancho: 0 }
+    // Precio: formas sin palabras
+    { id: 'estrella', nombre: 'Estrella', ancho: 1, grupo: 'precio' },
+    { id: 'etiqueta', nombre: 'Etiqueta', ancho: 1.15, grupo: 'precio' },
+    { id: 'circulo', nombre: 'Círculo', ancho: 1, grupo: 'precio' },
+    { id: 'cartel', nombre: 'Cartel', ancho: 1.15, grupo: 'precio' },
+    { id: 'burbuja', nombre: 'Globo', ancho: 1.2, grupo: 'precio' },
+    { id: 'neon', nombre: 'Neón', ancho: 1.25, grupo: 'precio' },
+    { id: 'colgante', nombre: 'Colgante', ancho: 1.05, grupo: 'precio' },
+    { id: 'ticket', nombre: 'Ticket', ancho: 1.2, grupo: 'precio' },
+    { id: 'sello', nombre: 'Sello', ancho: 1, grupo: 'precio' },
+    { id: 'corazon', nombre: 'Corazón', ancho: 1.05, grupo: 'precio' },
+    { id: 'flecha', nombre: 'Flecha', ancho: 1.25, grupo: 'precio' },
+    { id: 'pizarra', nombre: 'Pizarra', ancho: 1.2, grupo: 'precio' },
+    { id: 'banda', nombre: 'Banda', ancho: 0, grupo: 'precio' },
+    // Promociones: llevan una palabra (2x1 y Liquidación separados para no confundirlos)
+    { id: 'oferta', nombre: 'Oferta', ancho: 1, grupo: 'promo' },
+    { id: 'nuevo', nombre: 'Nuevo', ancho: 1, grupo: 'promo' },
+    { id: 'dosxuno', nombre: '2x1', ancho: 1.05, grupo: 'promo' },
+    { id: 'especial', nombre: 'Precio especial', ancho: 1.15, grupo: 'promo' },
+    { id: 'liquidacion', nombre: 'Liquidación', ancho: 1.2, grupo: 'promo' },
+    { id: 'mayor', nombre: 'Por mayor', ancho: 1.15, grupo: 'promo' },
+    { id: 'combo', nombre: 'Combo', ancho: 1.05, grupo: 'promo' },
+    { id: 'deldia', nombre: 'Oferta del día', ancho: 1.1, grupo: 'promo' },
+    { id: 'ultimas', nombre: 'Últimas unidades', ancho: 1.2, grupo: 'promo' },
+    // De temporada
+    { id: 'navidad', nombre: 'Navidad', ancho: 1.05, grupo: 'temporada' },
+    { id: 'madre', nombre: 'Día de la Madre', ancho: 1.05, grupo: 'temporada' },
+    { id: 'padre', nombre: 'Día del Padre', ancho: 1.1, grupo: 'temporada' },
+    { id: 'nino', nombre: 'Día del Niño', ancho: 1.05, grupo: 'temporada' }
   ];
+  const GRUPOS = [['precio', 'Precio'], ['promo', 'Promociones'], ['temporada', 'De temporada']];
   const POSICIONES = ['abajo-der', 'abajo-izq', 'arriba-der', 'arriba-izq'];
 
   // Tipos de letra para el nombre del producto (se cargan de Google Fonts)
@@ -126,7 +144,149 @@ window.STICKERS = (function () {
   function sinSombra(ctx) { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; }
 
   /* ---------- los estilos ---------- */
+  // forma de corazón centrada
+  function caminoCorazon(ctx, r) {
+    ctx.beginPath();
+    ctx.moveTo(0, r * 0.95);
+    ctx.bezierCurveTo(-r * 1.25, r * 0.15, -r * 1.05, -r * 0.95, 0, -r * 0.45);
+    ctx.bezierCurveTo(r * 1.05, -r * 0.95, r * 1.25, r * 0.15, 0, r * 0.95);
+    ctx.closePath();
+  }
+  function estrellaChica(ctx, x, y, r, color) {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) { const rr = i % 2 ? r * 0.45 : r, a = -Math.PI / 2 + (i / 10) * Math.PI * 2; ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+    ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+  }
+
   const dibujantes = {
+    colgante(ctx, r, d) {
+      ctx.rotate(0.1);
+      ctx.strokeStyle = '#6B4F2A'; ctx.lineWidth = r * 0.04;
+      ctx.beginPath(); ctx.moveTo(0, -r * 0.62); ctx.quadraticCurveTo(r * 0.25, -r * 1.05, r * 0.05, -r * 1.25); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.92, 0, Math.PI * 2);
+      sombra(ctx, r); ctx.fillStyle = '#D9B98A'; ctx.fill(); sinSombra(ctx);
+      ctx.setLineDash([r * 0.06, r * 0.05]); ctx.lineWidth = r * 0.025; ctx.strokeStyle = 'rgba(80,55,20,.55)';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(0, -r * 0.62, r * 0.08, 0, Math.PI * 2); ctx.fillStyle = '#FFFFFF'; ctx.fill();
+      ctx.save(); ctx.translate(0, r * 0.08); textosCentrados(ctx, d, r * 1.3, r * 0.42, '#3A2A12'); ctx.restore();
+    },
+    ticket(ctx, r, d) {
+      ctx.rotate(-0.06);
+      const w = r * 2.3, h = r * 1.15, m = r * 0.17;
+      ctx.beginPath();
+      ctx.moveTo(-w / 2, -h / 2); ctx.lineTo(w / 2, -h / 2);
+      ctx.arc(w / 2, 0, m, -Math.PI / 2, Math.PI / 2, true);
+      ctx.lineTo(w / 2, h / 2); ctx.lineTo(-w / 2, h / 2);
+      ctx.arc(-w / 2, 0, m, Math.PI / 2, -Math.PI / 2, true);
+      ctx.closePath();
+      sombra(ctx, r); ctx.fillStyle = '#FF5A36'; ctx.fill(); sinSombra(ctx);
+      ctx.setLineDash([r * 0.07, r * 0.06]); ctx.lineWidth = r * 0.025; ctx.strokeStyle = 'rgba(255,255,255,.75)';
+      ctx.beginPath(); ctx.roundRect(-w / 2 + r * 0.26, -h / 2 + r * 0.12, w - r * 0.52, h - r * 0.24, r * 0.06); ctx.stroke(); ctx.setLineDash([]);
+      textosCentrados(ctx, d, w * 0.66, r * 0.48, '#FFFFFF');
+    },
+    sello(ctx, r, d) {
+      ctx.rotate(-0.18);
+      ctx.beginPath();
+      for (let i = 0; i < 40; i++) { const rr = i % 2 ? r * 0.92 : r, a = (i / 40) * Math.PI * 2; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+      ctx.closePath(); sombra(ctx, r); ctx.fillStyle = '#1F8A5B'; ctx.fill(); sinSombra(ctx);
+      ctx.lineWidth = r * 0.04; ctx.strokeStyle = '#FFFFFF';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.78, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.7, 0, Math.PI * 2); ctx.stroke();
+      textosCentrados(ctx, d, r * 1.15, r * 0.4, '#FFFFFF');
+    },
+    corazon(ctx, r, d) {
+      ctx.rotate(-0.08);
+      caminoCorazon(ctx, r); sombra(ctx, r); ctx.fillStyle = '#E8335A'; ctx.fill(); sinSombra(ctx);
+      ctx.save(); ctx.translate(0, r * 0.08); textosCentrados(ctx, d, r * 1.25, r * 0.4, '#FFFFFF'); ctx.restore();
+    },
+    flecha(ctx, r, d) {
+      ctx.rotate(-0.05);
+      const w = r * 2.5, h = r * 1.0, p = r * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(-w / 2 + p, -h / 2); ctx.lineTo(w / 2, -h / 2); ctx.lineTo(w / 2, h / 2); ctx.lineTo(-w / 2 + p, h / 2); ctx.lineTo(-w / 2, 0); ctx.closePath();
+      sombra(ctx, r); ctx.fillStyle = '#7B2FF7'; ctx.fill(); sinSombra(ctx);
+      ctx.save(); ctx.translate(p * 0.3, 0); textosCentrados(ctx, d, w * 0.7, r * 0.46, '#FFFFFF'); ctx.restore();
+    },
+    pizarra(ctx, r, d) {
+      ctx.rotate(0.04);
+      const w = r * 2.3, h = r * 1.35;
+      ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, r * 0.08);
+      sombra(ctx, r); ctx.fillStyle = '#8B5A2B'; ctx.fill(); sinSombra(ctx);
+      ctx.beginPath(); ctx.rect(-w / 2 + r * 0.1, -h / 2 + r * 0.1, w - r * 0.2, h - r * 0.2); ctx.fillStyle = '#2E3B32'; ctx.fill();
+      const px = ajustar(ctx, d.precio, 400, '"Permanent Marker", "Comic Sans MS", cursive', w * 0.78, r * 0.5);
+      ctx.textAlign = 'center'; ctx.fillStyle = '#F4F1E8';
+      ctx.font = fuente(400, px, '"Permanent Marker", "Comic Sans MS", cursive'); ctx.fillText(d.precio, 0, px * 0.36);
+      if (d.abajo) { ctx.font = fuente(700, r * 0.15, CUERPO); ctx.fillText(d.abajo, 0, h / 2 - r * 0.2); }
+      ctx.textAlign = 'left';
+    },
+    especial(ctx, r, d) {
+      const w = r * 2.3, h = r * 1.3;
+      ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, r * 0.3);
+      sombra(ctx, r); ctx.fillStyle = '#0B3D91'; ctx.fill(); sinSombra(ctx);
+      ctx.lineWidth = r * 0.04; ctx.strokeStyle = '#E8C46A';
+      ctx.beginPath(); ctx.roundRect(-w / 2 + r * 0.08, -h / 2 + r * 0.08, w - r * 0.16, h - r * 0.16, r * 0.24); ctx.stroke();
+      textosCentrados(ctx, Object.assign({}, d, { arriba: 'PRECIO ESPECIAL' }), w * 0.8, r * 0.44, '#FFFFFF');
+    },
+    mayor(ctx, r, d) {
+      ctx.rotate(-0.04);
+      const w = r * 2.3, h = r * 1.3;
+      ctx.beginPath(); ctx.rect(-w / 2, -h / 2, w, h);
+      sombra(ctx, r); ctx.fillStyle = '#FFFFFF'; ctx.fill(); sinSombra(ctx);
+      ctx.beginPath(); ctx.rect(-w / 2, -h / 2, w, h * 0.32); ctx.fillStyle = '#0E7490'; ctx.fill();
+      ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center';
+      const pxT = ajustar(ctx, 'POR MAYOR', 800, CUERPO, w * 0.85, r * 0.2);
+      ctx.font = fuente(800, pxT, CUERPO); ctx.fillText('POR MAYOR', 0, -h / 2 + h * 0.16 + pxT * 0.36);
+      ctx.textAlign = 'left';
+      ctx.save(); ctx.translate(0, h * 0.16); textosCentrados(ctx, Object.assign({}, d, { arriba: '' }), w * 0.82, r * 0.42, '#0E2A33'); ctx.restore();
+    },
+    combo(ctx, r, d) {
+      ctx.rotate(0.07);
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.95, 0, Math.PI * 2);
+      sombra(ctx, r); ctx.fillStyle = '#12B5A6'; ctx.fill(); sinSombra(ctx);
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.82, 0, Math.PI * 2); ctx.lineWidth = r * 0.05; ctx.strokeStyle = '#FFE14D'; ctx.stroke();
+      textosCentrados(ctx, Object.assign({}, d, { arriba: 'COMBO' }), r * 1.3, r * 0.42, '#FFFFFF');
+    },
+    deldia(ctx, r, d) {
+      ctx.rotate(-0.1);
+      ctx.beginPath();
+      for (let i = 0; i < 16; i++) { const rr = i % 2 ? r * 0.8 : r, a = (i / 16) * Math.PI * 2; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+      ctx.closePath(); sombra(ctx, r); ctx.fillStyle = '#111827'; ctx.fill(); sinSombra(ctx);
+      textosCentrados(ctx, Object.assign({}, d, { arriba: 'OFERTA DEL DÍA' }), r * 1.3, r * 0.4, '#FFD23F');
+    },
+    navidad(ctx, r, d) {
+      ctx.rotate(-0.06);
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.95, 0, Math.PI * 2);
+      sombra(ctx, r); ctx.fillStyle = '#C8102E'; ctx.fill(); sinSombra(ctx);
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.84, 0, Math.PI * 2); ctx.lineWidth = r * 0.05; ctx.strokeStyle = '#1E7B3A'; ctx.stroke();
+      // ramita de acebo
+      ctx.fillStyle = '#1E7B3A';
+      [[-0.18, -0.9, -0.5], [0.18, -0.9, 0.5]].forEach((h) => { ctx.save(); ctx.translate(r * h[0], r * h[1]); ctx.rotate(h[2]); ctx.beginPath(); ctx.ellipse(0, 0, r * 0.2, r * 0.09, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore(); });
+      ctx.beginPath(); ctx.arc(0, -r * 0.88, r * 0.08, 0, Math.PI * 2); ctx.fillStyle = '#FFD23F'; ctx.fill();
+      ctx.save(); ctx.translate(0, r * 0.06); textosCentrados(ctx, Object.assign({}, d, { arriba: 'NAVIDAD' }), r * 1.3, r * 0.42, '#FFFFFF'); ctx.restore();
+    },
+    madre(ctx, r, d) {
+      caminoCorazon(ctx, r); sombra(ctx, r); ctx.fillStyle = '#F7A8C4'; ctx.fill(); sinSombra(ctx);
+      ctx.lineWidth = r * 0.04; ctx.strokeStyle = '#FFFFFF'; ctx.stroke();
+      ctx.save(); ctx.translate(0, r * 0.06); textosCentrados(ctx, Object.assign({}, d, { arriba: 'DÍA DE LA MADRE' }), r * 1.15, r * 0.36, '#7A1240'); ctx.restore();
+    },
+    padre(ctx, r, d) {
+      ctx.rotate(0.05);
+      const w = r * 2.2, h = r * 1.3;
+      ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, r * 0.12);
+      sombra(ctx, r); ctx.fillStyle = '#1E3A5F'; ctx.fill(); sinSombra(ctx);
+      // corbata chiquita
+      ctx.fillStyle = '#F2B134';
+      ctx.beginPath(); ctx.moveTo(-r * 0.08, -h / 2); ctx.lineTo(r * 0.08, -h / 2); ctx.lineTo(r * 0.05, -h / 2 + r * 0.1); ctx.lineTo(r * 0.11, -h / 2 + r * 0.32); ctx.lineTo(0, -h / 2 + r * 0.42); ctx.lineTo(-r * 0.11, -h / 2 + r * 0.32); ctx.lineTo(-r * 0.05, -h / 2 + r * 0.1); ctx.closePath(); ctx.fill();
+      ctx.save(); ctx.translate(0, r * 0.12); textosCentrados(ctx, Object.assign({}, d, { arriba: 'DÍA DEL PADRE' }), w * 0.82, r * 0.4, '#FFFFFF'); ctx.restore();
+    },
+    nino(ctx, r, d) {
+      ctx.rotate(-0.08);
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.95, 0, Math.PI * 2);
+      sombra(ctx, r); ctx.fillStyle = '#FFC93C'; ctx.fill(); sinSombra(ctx);
+      const colores = ['#E8335A', '#1C5BB8', '#12B5A6', '#7B2FF7'];
+      for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; estrellaChica(ctx, Math.cos(a) * r * 0.8, Math.sin(a) * r * 0.8, r * 0.07, colores[i % 4]); }
+      textosCentrados(ctx, Object.assign({}, d, { arriba: 'DÍA DEL NIÑO' }), r * 1.25, r * 0.4, '#3B1A6B');
+    },
     liquidacion(ctx, r, d) {
       ctx.rotate(-0.12);
       const w = r * 2.3, h = r * 1.35;
@@ -585,5 +745,5 @@ window.STICKERS = (function () {
     return fuentesListas;
   }
 
-  return { ESTILOS: ESTILOS, POSICIONES: POSICIONES, LETRAS: LETRAS, FONDOS: FONDOS, componer: componer, tamanoSalida: tamanoSalida, miniatura: miniatura, miniaturaFondo: miniaturaFondo, aBlob: aBlob, prepararFuentes: prepararFuentes, pesos: pesos, precioTexto: precioTexto };
+  return { ESTILOS: ESTILOS, POSICIONES: POSICIONES, LETRAS: LETRAS, FONDOS: FONDOS, componer: componer, tamanoSalida: tamanoSalida, miniatura: miniatura, miniaturaFondo: miniaturaFondo, aBlob: aBlob, prepararFuentes: prepararFuentes, pesos: pesos, GRUPOS: GRUPOS, precioTexto: precioTexto };
 })();
