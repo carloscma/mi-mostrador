@@ -548,3 +548,4 @@ body[data-vista="editor"] #aviso { top: calc(70px + env(safe-area-inset-top)); }
 .fc-acciones .btn-texto { font-size: 14px; }
 .fc-campos .con-signo input { padding-left: 30px; }
 .fila-precio .con-signo input { padding-left: 30px; }
+.fila-completar.resaltar { box-shadow: 0 0 0 3px var(--marca); transition: box-shadow .3s; }

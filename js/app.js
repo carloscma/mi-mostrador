@@ -186,7 +186,17 @@
     else if (v === 'catalogo') app.innerHTML = vistaCatalogo();
     else if (v === 'ajustes') app.innerHTML = vistaAjustes();
     else if (v === 'precios') app.innerHTML = vistaPrecios();
-    else if (v === 'completar') app.innerHTML = vistaCompletar();
+    else if (v === 'completar') {
+      app.innerHTML = vistaCompletar();
+      const id = estado.filaCompletar;
+      estado.filaCompletar = null;
+      if (id) {
+        const fila = app.querySelector('[data-fila="' + id + '"]');
+        const siguiente = fila && Array.from(app.querySelectorAll('.fila-completar')).slice(Array.from(app.querySelectorAll('.fila-completar')).indexOf(fila) + 1).find((f) => f.classList.contains('falta-fila'));
+        const destino = siguiente || fila;
+        if (destino) setTimeout(() => { destino.scrollIntoView({ block: 'center' }); destino.classList.add('resaltar'); }, 50);
+      }
+    }
     else app.innerHTML = vistaInicio();
     window.scrollTo(0, 0);
   }
@@ -315,7 +325,18 @@
     }
   }
 
+  // A dónde vuelve el editor: la pantalla desde la que se abrió
+  estado.volverA = 'inicio';
+  estado.filaCompletar = null;
+  function volverDelEditor() {
+    const v = estado.volverA || 'inicio';
+    if (location.hash === '#' + v) navegar(); else location.hash = v;
+  }
+
   async function abrirEditor(p) {
+    const desde = vistaActual();
+    if (desde !== 'editor') estado.volverA = desde;
+    estado.filaCompletar = desde === 'completar' ? p.id : null;
     estado.editor = Object.assign({ fondo: 'desenfocado', letra: 'moderna', capas: {} }, p);
     estado.editor.fotos = (p.fotos || []).slice();
     estado.editor.auto = Object.assign({}, p.auto || {});
@@ -353,7 +374,7 @@
     const e = estado.editor;
     const h = e.herramienta;
     return '<div class="editor2' + (h ? ' con-panel' : '') + '">' +
-      '<header class="ed-top"><a class="ed-volver" href="#inicio" data-accion="salir-editor" aria-label="Volver al inicio"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>' +
+      '<header class="ed-top"><a class="ed-volver" href="#' + (estado.volverA || 'inicio') + '" data-accion="salir-editor" aria-label="Volver"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>' +
       '<span></span>' +
       '<button class="ed-descargar" data-accion="descargar-editor" aria-label="Guardar las fotos en el celular" title="Guardar las fotos en el celular"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg></button>' +
       '<button class="btn ed-guardar" data-accion="guardar">Guardar</button>' +
@@ -1573,7 +1594,7 @@
       delete estado.pedido[p.id];
       if (estado.editor && estado.editor.id === p.id) estado.editor = null;
       const v = vistaActual();
-      if (v === 'inicio' || v === 'catalogo') navegar(); else location.hash = 'inicio';
+      if (v === 'inicio' || v === 'catalogo' || v === 'completar' || v === 'precios') navegar(); else volverDelEditor();
       avisar('Producto eliminado');
     },
     compartir: () => abrirCompartir(),
@@ -1623,8 +1644,8 @@
       const e = estado.editor;
       if (e && e.firma !== firmaEditor(e)) { ev.preventDefault(); abrirCapa({ tipo: 'salir' }); }
     },
-    'guardar-y-salir': async () => { cerrarCapa(); if (await guardarSolo()) location.hash = 'inicio'; },
-    'salir-sin-guardar': () => { cerrarCapa(); location.hash = 'inicio'; },
+    'guardar-y-salir': async () => { cerrarCapa(); if (await guardarSolo()) volverDelEditor(); },
+    'salir-sin-guardar': () => { cerrarCapa(); volverDelEditor(); },
     herramienta: (el) => abrirHerramienta(estado.editor.herramienta === el.dataset.h ? null : el.dataset.h),
     'cerrar-panel': () => { if (document.activeElement) document.activeElement.blur(); abrirHerramienta(null); },
     fondo: (el) => {
