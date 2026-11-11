@@ -606,9 +606,10 @@
         '<div class="modos-fondo" role="group" aria-label="Fondo de la foto">' + modos.map((m) =>
         '<button data-accion="modo-fondo" data-modo="' + m[0] + '" aria-pressed="' + (e.modoFondo === m[0]) + '">' + m[1] + '</button>').join('') + '</div>' +
         '<p class="detalle">' + ayuda + '</p>' +
-        '<div class="estilos fondos' + (e.modoFondo === 'diseno' ? '' : ' apagados') + '" role="group" aria-label="Diseños de fondo">' + S.FONDOS.map((f) =>
+        S.GRUPOS_FONDO.map((g) => '<h3 class="grupo-titulo">' + g[1] + '</h3>' +
+        '<div class="estilos fondos' + (e.modoFondo === 'diseno' ? '' : ' apagados') + '" role="group" aria-label="' + g[1] + '">' + S.FONDOS.filter((f) => (f.grupo || 'basicos') === g[0]).map((f) =>
         '<button class="estilo" data-accion="fondo" data-fondo="' + f.id + '" aria-pressed="' + (e.modoFondo === 'diseno' && e.fondo === f.id) + '">' +
-        '<canvas width="180" height="320" data-mini-fondo="' + f.id + '" aria-hidden="true"></canvas><span>' + esc(f.nombre) + '</span></button>').join('') + '</div>';
+        '<canvas width="180" height="320" data-mini-fondo="' + f.id + '" aria-hidden="true"></canvas><span>' + esc(f.nombre) + '</span></button>').join('') + '</div>').join('');
     }
     if (e.herramienta === 'letra') return panelLetra();
     return panelSticker();
