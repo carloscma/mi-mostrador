@@ -117,7 +117,7 @@
   /* ---------------- Estado ---------------- */
   const AJUSTES_BASE = { negocio: 'Mi negocio', whatsapp: '', color: '#1C5BB8', mostrarNegocio: true, mostrarCodigo: false, redes: ['estado', 'ig-historia'], estilo: 'estrella', fondo: 'desenfocado', letra: 'moderna' };
   const ajustes = Object.assign({}, AJUSTES_BASE, local.leer('mostrador:ajustes') || {});
-  function guardarAjustes() { local.escribir('mostrador:ajustes', ajustes); }
+  function guardarAjustes() { local.escribir('mostrador:ajustes', ajustes); if (window.NUBE) NUBE.ajustesCambiaron(); }
 
   // Logo del negocio: se guarda aparte porque es una imagen
   let logo = null;
@@ -137,6 +137,7 @@
       const datos = c.toDataURL('image/png');
       if (!local.escribir('mostrador:logo', datos)) { avisar('No se pudo guardar el logo en este navegador.'); return; }
       await cargarLogo();
+      if (window.NUBE) NUBE.ajustesCambiaron();
       avisar('Logo guardado. Ya aparece en tus imágenes.');
     } catch (e) {
       avisar('No pudimos abrir esa imagen. Probá con otra.');
@@ -285,7 +286,7 @@
       ? (ps.length > 1 ? barraBusqueda('inicio') : '') + '<div id="grilla-inicio">' + grillaInicio() + '</div>'
       : '<p class="vacio">Todavía no sacaste fotos. Tocá "Sacar foto" para empezar.</p>';
 
-    return '<header class="barra-top inicio-top"><div class="marca-app"><i>M</i>Mostrador</div><span></span>' +
+    return '<header class="barra-top inicio-top"><div class="marca-app"><i>M</i>Mostrador</div>' + indicadorNube() +
       '<a class="btn-engranaje" href="#ajustes" aria-label="Ajustes del negocio">' + ICONO_ENGRANAJE + '</a></header>' +
       '<main class="pagina">' +
       '<section class="camara">' +
@@ -298,6 +299,7 @@
       '<label class="btn-muchos" for="carga-rapida"><b>¿Ya tenés las fotos?</b> Cargá muchos productos juntos →</label>' +
       '<input class="oculto" id="carga-rapida" type="file" accept="image/*" multiple data-accion="carga-rapida">' +
       '</section>' +
+      bannerCuenta() +
       (ps.some(incompleto) ? '<a class="aviso-completar" href="#completar"><b>' + ps.filter(incompleto).length + '</b> ' + (ps.filter(incompleto).length === 1 ? 'producto sin nombre o precio' : 'productos sin nombre o precio') + '<span>Completar →</span></a>' : '') +
       '<section class="seccion">' +
       '<div class="fila"><h2>Tus productos <small>' + (ps.length || '') + '</small></h2>' +
@@ -1048,6 +1050,7 @@
         '<div class="tipos-negocio">' + op.map((o) => '<button class="tipo-negocio" data-accion="elegir-negocio" data-tipo="' + o[0] + '"' + (ajustes.tipoNegocio === o[0] ? ' aria-pressed="true"' : '') + '><b>' + o[1] + '</b><span>' + o[2] + '</span></button>').join('') + '</div>';
       pie = '';
     }
+    else if (c.tipo === 'cuenta') { const h = hojaCuenta(c); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
     else if (c.tipo === 'salir') {
       titulo = '¿Guardar los cambios?';
       cuerpo = '<p class="detalle">' + (estado.editor && estado.editor.id ? 'Hiciste cambios en este producto que todavía no guardaste.' : 'Este producto todavía no está guardado en tus productos ni en tu catálogo.') + '</p>';
@@ -1504,6 +1507,7 @@
   function vistaAjustes() {
     return '<header class="barra-top"><a class="btn-texto" href="#inicio">← Volver</a><b>Ajustes</b><span></span></header>' +
       '<main class="pagina ajustes">' +
+      '<div id="caja-cuenta">' + cajaCuenta() + '</div>' +
       '<div class="campo"><label for="a-tipo">¿Qué vendés?</label><select id="a-tipo" data-ajuste="tipoNegocio">' +
       [['productos', 'Productos'], ['vehiculos', 'Autos y motos'], ['ambos', 'Las dos cosas']].map((o) => '<option value="' + o[0] + '"' + ((ajustes.tipoNegocio || 'productos') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') +
       '</select><span class="nota">Con "Productos", un auto o una moto se toma como juguete.</span></div>' +
@@ -1525,6 +1529,169 @@
       (local.leer('mostrador:ultima-copia') ? '<p class="nota">Última copia: ' + esc(local.leer('mostrador:ultima-copia')) + '</p>' : '') + '</section>' +
       '<section class="caja"><h2>Tener la app en tu celular</h2><p>Abrí este link en Chrome (Android) o Safari (iPhone), tocá el menú y elegí <b>"Agregar a la pantalla de inicio"</b>. Queda con su ícono, como cualquier app.</p></section>' +
       '</main>';
+  }
+
+  /* ================= Cuenta (productos en internet) ================= */
+  const NUBE_TEXTOS = {
+    'al-dia': ['Guardado', 'Tus productos están guardados en internet.'],
+    'sincronizando': ['Guardando…', 'Guardando en internet…'],
+    'sin-conexion': ['Sin internet', 'Sin internet: se guarda cuando vuelva la conexión.'],
+    'error': ['Revisar', 'No se pudo guardar en internet.']
+  };
+  const ICONO_NUBE = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .6-8A6 6 0 0 0 6 9.5 4.3 4.3 0 0 0 7 18z"/></svg>';
+
+  function indicadorNube() {
+    if (!window.NUBE || !NUBE.sesion) return '<span id="nube-ind"></span>';
+    const f = NUBE.estado.fase;
+    const t = NUBE_TEXTOS[f] || NUBE_TEXTOS['al-dia'];
+    return '<a id="nube-ind" class="nube-ind nube-' + f + '" href="#ajustes" aria-label="' + esc(t[1]) + '">' + ICONO_NUBE + '<span>' + t[0] + '</span></a>';
+  }
+
+  function bannerCuenta() {
+    if (!window.NUBE || NUBE.sesion || local.leer('mostrador:sin-banner-cuenta')) return '';
+    return '<div class="banner-cuenta">' + ICONO_NUBE + '<p><b>Guardá tus productos en internet</b>Si se rompe o perdés el celular, no perdés nada. Y los ves en otro celular.</p>' +
+      '<button class="btn btn-chico btn-marca" data-accion="cuenta" data-modo="crear">Crear cuenta</button>' +
+      '<button class="cerrar-banner" data-accion="ocultar-banner-cuenta" aria-label="Ocultar">×</button></div>';
+  }
+
+  function cajaCuenta() {
+    if (!window.NUBE) return '';
+    if (!NUBE.sesion) {
+      return '<section class="caja caja-cuenta"><h2>Tu cuenta</h2>' +
+        '<p class="detalle">Con una cuenta, tus productos quedan guardados en internet. Si cambiás de celular, entrás con tu correo y están todos.</p>' +
+        '<div class="fila-botones"><button class="btn btn-chico btn-marca" data-accion="cuenta" data-modo="crear">Crear cuenta</button>' +
+        '<button class="btn btn-chico" data-accion="cuenta" data-modo="entrar">Ya tengo cuenta</button></div></section>';
+    }
+    const e = NUBE.estado;
+    const t = NUBE_TEXTOS[e.fase] || NUBE_TEXTOS['al-dia'];
+    return '<section class="caja caja-cuenta"><h2>Tu cuenta</h2>' +
+      '<p class="cuenta-correo">' + esc(NUBE.email || 'Cuenta conectada') + '</p>' +
+      '<p class="estado-nube nube-' + e.fase + '">' + ICONO_NUBE + '<span>' + esc(e.mensaje || t[1]) + '</span></p>' +
+      (e.ultima ? '<p class="nota">Última vez: ' + new Date(e.ultima).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + '</p>' : '') +
+      '<div class="fila-botones"><button class="btn btn-chico btn-marca" data-accion="nube-ahora">Guardar ahora</button>' +
+      '<button class="btn btn-chico" data-accion="cuenta" data-modo="salir">Cerrar sesión</button></div></section>';
+  }
+
+  function hojaCuenta(c) {
+    const campoCorreo = '<div class="campo"><label for="c-correo">Tu correo</label><input id="c-correo" type="email" inputmode="email" autocomplete="email" value="' + esc(c.correo || '') + '" placeholder="nombre@gmail.com"></div>';
+    const campoClave = (nueva) => '<div class="campo"><label for="c-clave">' + (nueva ? 'Contraseña nueva' : 'Contraseña') + '</label>' +
+      '<div class="con-ojo"><input id="c-clave" type="password" autocomplete="' + (nueva || c.modo === 'crear' ? 'new-password' : 'current-password') + '" placeholder="' + (nueva || c.modo === 'crear' ? 'Al menos 6 letras o números' : '') + '">' +
+      '<button type="button" class="btn-ojo" data-accion="ver-clave" aria-label="Mostrar contraseña">Ver</button></div></div>';
+    const error = c.error ? '<p class="error-cuenta" role="alert">' + esc(c.error) + '</p>' : '';
+    const ocupado = c.ocupado ? ' disabled' : '';
+    if (c.modo === 'crear') {
+      return ['Crear tu cuenta',
+        '<p class="detalle">Tus productos se guardan en internet y los ves en cualquier celular donde entres.</p>' + campoCorreo + campoClave(false) + error +
+        '<p class="nota">Anotá la contraseña en un lugar seguro.</p>',
+        '<button class="btn btn-marca btn-ancho" data-accion="cuenta-enviar"' + ocupado + '>' + (c.ocupado ? 'Creando…' : 'Crear cuenta') + '</button>' +
+        '<button class="btn-texto" data-accion="cuenta" data-modo="entrar">Ya tengo cuenta</button>'];
+    }
+    if (c.modo === 'entrar') {
+      return ['Entrar a tu cuenta', campoCorreo + campoClave(false) + error,
+        '<button class="btn btn-marca btn-ancho" data-accion="cuenta-enviar"' + ocupado + '>' + (c.ocupado ? 'Entrando…' : 'Entrar') + '</button>' +
+        '<button class="btn-texto" data-accion="cuenta" data-modo="olvide">Me olvidé la contraseña</button>' +
+        '<button class="btn-texto" data-accion="cuenta" data-modo="crear">No tengo cuenta: crear una</button>'];
+    }
+    if (c.modo === 'olvide') {
+      if (c.enviado) return ['Revisá tu correo', '<p class="detalle">Te mandamos un correo a <b>' + esc(c.correo) + '</b>. Abrilo desde este celular y tocá el link para poner una contraseña nueva. Si no aparece, mirá en "Spam" o "Promociones".</p>', '<button class="btn btn-marca btn-ancho" data-accion="cerrar">Entendido</button>'];
+      return ['Recuperar la contraseña', '<p class="detalle">Escribí tu correo y te mandamos un link para poner una contraseña nueva.</p>' + campoCorreo + error,
+        '<button class="btn btn-marca btn-ancho" data-accion="cuenta-enviar"' + ocupado + '>' + (c.ocupado ? 'Enviando…' : 'Enviar el correo') + '</button>' +
+        '<button class="btn-texto" data-accion="cuenta" data-modo="entrar">Volver</button>'];
+    }
+    if (c.modo === 'nueva-clave') {
+      return ['Contraseña nueva', '<p class="detalle">Escribí la contraseña que vas a usar de ahora en adelante.</p>' + campoClave(true) + error,
+        '<button class="btn btn-marca btn-ancho" data-accion="cuenta-enviar"' + ocupado + '>' + (c.ocupado ? 'Guardando…' : 'Guardar contraseña') + '</button>'];
+    }
+    // salir
+    const n = c.pendientes || 0;
+    return ['¿Cerrar sesión?',
+      (n ? '<p class="error-cuenta">Hay ' + n + (n === 1 ? ' cambio que todavía no se guardó' : ' cambios que todavía no se guardaron') + ' en internet. Si cerrás la sesión ahora, se pierden.</p>' : '') +
+      '<p class="detalle">Tus productos quedan guardados en internet y se sacan de este celular. Para volver a verlos, entrás con tu correo y contraseña.</p>' + error,
+      (n ? '<button class="btn btn-marca btn-ancho" data-accion="nube-ahora-salir"' + ocupado + '>' + (c.ocupado ? 'Guardando…' : 'Guardar y cerrar sesión') + '</button>' +
+        '<button class="btn btn-peligro-lleno btn-ancho" data-accion="cuenta-salir-ya"' + ocupado + '>Cerrar igual</button>'
+        : '<button class="btn btn-peligro-lleno btn-ancho" data-accion="cuenta-salir-ya"' + ocupado + '>Cerrar sesión</button>') +
+      '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Cancelar</button>'];
+  }
+
+  async function abrirCuenta(modo) {
+    const previo = estado.capa && estado.capa.tipo === 'cuenta' ? estado.capa : {};
+    const correoEscrito = document.getElementById('c-correo');
+    const datos = { tipo: 'cuenta', modo: modo, correo: (correoEscrito && correoEscrito.value) || previo.correo || '' };
+    if (modo === 'salir') datos.pendientes = await NUBE.pendientes();
+    if (estado.capa) { estado.capa = datos; renderCapa(false); } else abrirCapa(datos);
+    setTimeout(() => { const i = document.getElementById(modo === 'nueva-clave' ? 'c-clave' : 'c-correo'); if (i && !i.value) i.focus(); }, 80);
+  }
+
+  async function enviarCuenta() {
+    const c = estado.capa;
+    if (!c || c.tipo !== 'cuenta' || c.ocupado) return;
+    const correo = document.getElementById('c-correo');
+    const clave = document.getElementById('c-clave');
+    c.correo = correo ? correo.value.trim() : c.correo;
+    const pw = clave ? clave.value : '';
+    if (correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.correo)) { c.error = 'Escribí tu correo completo (por ejemplo nombre@gmail.com).'; renderCapa(false); return; }
+    if (clave && pw.length < 6) { c.error = 'La contraseña tiene que tener al menos 6 letras o números.'; renderCapa(false); if (document.getElementById('c-clave')) document.getElementById('c-clave').value = pw; return; }
+    c.error = ''; c.ocupado = true; renderCapa(false);
+    try {
+      if (c.modo === 'crear') await NUBE.crearCuenta(c.correo, pw);
+      else if (c.modo === 'entrar') await NUBE.entrar(c.correo, pw);
+      else if (c.modo === 'olvide') { await NUBE.recuperar(c.correo); c.ocupado = false; c.enviado = true; renderCapa(false); return; }
+      else if (c.modo === 'nueva-clave') { await NUBE.nuevaClave(pw); NUBE.recuperando = false; }
+      const modo = c.modo;
+      cerrarCapa();
+      await recargarDeLaNube();
+      avisar(modo === 'crear' ? '¡Cuenta creada! Tus productos se están guardando en internet.' : modo === 'nueva-clave' ? 'Contraseña cambiada.' : '¡Listo! Ya entraste a tu cuenta.');
+      if (modo === 'nueva-clave') NUBE.sincronizar();
+    } catch (e) {
+      if (estado.capa !== c) return;
+      c.ocupado = false; c.error = e.message || 'No se pudo completar.'; renderCapa(false);
+    }
+  }
+
+  async function salirDeLaCuenta(guardarAntes) {
+    const c = estado.capa;
+    if (c) { c.ocupado = true; c.error = ''; renderCapa(false); }
+    if (guardarAntes) {
+      await NUBE.sincronizar();
+      const n = await NUBE.pendientes();
+      if (n) { if (c && estado.capa === c) { c.ocupado = false; c.pendientes = n; c.error = 'No se pudo guardar todo. Revisá la conexión a internet y probá de nuevo.'; renderCapa(false); } return; }
+    }
+    await NUBE.salir(true);
+    cerrarCapa();
+    await recargarDeLaNube();
+    avisar('Cerraste la sesión.');
+  }
+
+  // Volver a leer productos y ajustes después de un cambio que vino de internet
+  async function recargarDeLaNube() {
+    estado.productos = await ALMACEN.todos();
+    const v = vistaActual();
+    const escribiendo = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && app.contains(document.activeElement);
+    if (estado.capa || escribiendo || v === 'editor' || v === 'precios') { refrescarNube(); return; }
+    const y = window.scrollY;
+    if (v === 'inicio') app.innerHTML = vistaInicio();
+    else if (v === 'catalogo') app.innerHTML = vistaCatalogo();
+    else if (v === 'completar') app.innerHTML = vistaCompletar();
+    else if (v === 'ajustes') app.innerHTML = vistaAjustes();
+    window.scrollTo(0, y);
+  }
+
+  // Solo el cartelito de estado (sin redibujar la pantalla)
+  function refrescarNube() {
+    const ind = document.getElementById('nube-ind');
+    if (ind) ind.outerHTML = indicadorNube();
+    const caja = document.getElementById('caja-cuenta');
+    if (caja) caja.innerHTML = cajaCuenta();
+  }
+
+  if (window.NUBE) {
+    NUBE.alCambiar(refrescarNube);
+    NUBE.alCambiarProductos = () => recargarDeLaNube();
+    window.MOSTRADOR_RECARGAR_AJUSTES = async () => {
+      Object.assign(ajustes, AJUSTES_BASE, local.leer('mostrador:ajustes') || {});
+      await cargarLogo();
+      aplicarColor();
+    };
   }
 
   /* ================= Eventos ================= */
@@ -1659,8 +1826,15 @@
       dibujarVista();
     },
     'volver-editar': () => { const p = estado.capa && estado.capa.producto; cerrarCapa(); if (p) abrirEditor(estado.productos.find((x) => x.id === p.id) || p); },
-    'quitar-logo': () => { try { localStorage.removeItem('mostrador:logo'); } catch (e) { /* nada */ } logo = null; app.innerHTML = vistaAjustes(); avisar('Logo quitado'); },
+    'quitar-logo': () => { try { localStorage.removeItem('mostrador:logo'); } catch (e) { /* nada */ } logo = null; if (window.NUBE) NUBE.ajustesCambiaron(); app.innerHTML = vistaAjustes(); avisar('Logo quitado'); },
     cerrar: () => cerrarCapa(),
+    cuenta: (el) => abrirCuenta(el.dataset.modo),
+    'cuenta-enviar': () => enviarCuenta(),
+    'cuenta-salir-ya': () => salirDeLaCuenta(false),
+    'nube-ahora-salir': () => salirDeLaCuenta(true),
+    'nube-ahora': async () => { avisar('Guardando en internet…'); await NUBE.sincronizar(); const n = await NUBE.pendientes(); avisar(n ? (NUBE.estado.mensaje || 'No se pudo guardar todo.') : 'Todo guardado en internet.'); },
+    'ver-clave': (el) => { const i = document.getElementById('c-clave'); if (!i) return; const ver = i.type === 'password'; i.type = ver ? 'text' : 'password'; el.textContent = ver ? 'Ocultar' : 'Ver'; },
+    'ocultar-banner-cuenta': () => { local.escribir('mostrador:sin-banner-cuenta', true); const b = app.querySelector('.banner-cuenta'); if (b) b.remove(); avisar('Podés crear la cuenta cuando quieras desde Ajustes.'); },
     empezar: () => {
       const c = estado.capa;
       c.cola = REDES.map((r) => r.id).filter((id) => c.elegidas.indexOf(id) >= 0);
@@ -1831,7 +2005,10 @@
     if (el.dataset.ajuste === 'negocio' && !el.value.trim()) { ajustes.negocio = AJUSTES_BASE.negocio; el.value = ajustes.negocio; guardarAjustes(); }
   });
 
-  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && estado.capa) cerrarCapa(); });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && estado.capa) cerrarCapa();
+    if (ev.key === 'Enter' && estado.capa && estado.capa.tipo === 'cuenta' && ev.target.tagName === 'INPUT') { ev.preventDefault(); enviarCuenta(); }
+  });
   window.addEventListener('hashchange', navegar);
 
   // App instalable (solo en la versión publicada en internet)
@@ -1842,5 +2019,9 @@
   // En Netlify gratis aparece su cartel abajo: dejamos lugar para que no tape botones
   if (/\.netlify\.app$/.test(location.hostname)) document.body.classList.add('con-insignia');
   aplicarColor();
-  Promise.all([cargarLogo(), cargarProductos()]).then(navegar, navegar);
+  Promise.all([cargarLogo(), cargarProductos()]).then(navegar, navegar).then(() => {
+    if (!window.NUBE) return;
+    if (NUBE.recuperando) abrirCuenta('nueva-clave');
+    NUBE.iniciar();
+  });
 })();

@@ -549,3 +549,24 @@ body[data-vista="editor"] #aviso { top: calc(70px + env(safe-area-inset-top)); }
 .fc-campos .con-signo input { padding-left: 30px; }
 .fila-precio .con-signo input { padding-left: 30px; }
 .fila-completar.resaltar { box-shadow: 0 0 0 3px var(--marca); transition: box-shadow .3s; }
+
+/* ---------- Etapa 12: cuenta y productos en internet ---------- */
+.nube-ind { display: inline-flex; align-items: center; gap: 5px; justify-self: end; padding: 5px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700; text-decoration: none; background: var(--marca-suave); color: var(--acento); white-space: nowrap; }
+.nube-ind.nube-sincronizando svg { animation: latido 1.2s ease-in-out infinite; }
+.nube-ind.nube-sin-conexion { background: #EEE; color: #555; }
+.nube-ind.nube-error { background: #FDE7E4; color: #A12A1B; }
+@keyframes latido { 50% { opacity: .35; } }
+.banner-cuenta { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: start; margin-top: 14px; padding: 14px 40px 14px 14px; border-radius: 14px; background: var(--marca-suave); border: 1px solid color-mix(in srgb, var(--marca) 25%, transparent); }
+.banner-cuenta > svg { width: 24px; height: 24px; color: var(--acento); margin-top: 2px; }
+.banner-cuenta p { margin: 0; font-size: 14px; color: var(--suave); line-height: 1.35; }
+.banner-cuenta p b { display: block; color: var(--texto); font-size: 15px; margin-bottom: 2px; }
+.banner-cuenta .btn { grid-column: 2; justify-self: start; }
+.cerrar-banner { position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; border: 0; background: none; font-size: 22px; color: var(--suave); cursor: pointer; }
+.caja-cuenta .cuenta-correo { margin: 0 0 6px; font-weight: 700; word-break: break-all; }
+.estado-nube { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 14px; color: var(--suave); }
+.estado-nube svg { flex: none; color: var(--acento); }
+.estado-nube.nube-error, .estado-nube.nube-error svg { color: #A12A1B; }
+.error-cuenta { margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: #FDE7E4; color: #8E2215; font-size: 14px; font-weight: 600; }
+.con-ojo { display: flex; gap: 6px; }
+.con-ojo input { flex: 1; min-width: 0; }
+.btn-ojo { flex: none; padding: 0 12px; border: 1px solid var(--borde); border-radius: 10px; background: var(--superficie); color: var(--texto); font: inherit; font-weight: 600; cursor: pointer; }
