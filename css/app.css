@@ -606,3 +606,29 @@ button.miembro { cursor: pointer; }
 .sin-permiso { margin: 12px 0 0; padding: 12px; border-radius: 12px; background: var(--fondo); }
 #pedidos-a { width: 100%; padding: 12px; border: 1px solid var(--borde); border-radius: 12px; font: inherit; background: var(--superficie); color: var(--texto); }
 .btn-texto.peligro { justify-self: center; }
+
+/* ---------- Etapa 15: plan, administrador y vehículos ---------- */
+.nube-ind.nube-bloqueado, .nube-ind.nube-limite { background: #FFF1D6; color: #7A4B00; }
+.estado-nube.nube-bloqueado, .estado-nube.nube-limite { color: #7A4B00; }
+.banner-plan { margin-top: 14px; padding: 14px; border-radius: 14px; background: #FFF4C2; color: #4A3700; display: grid; gap: 8px; }
+.banner-plan b { font-size: 16px; }
+.banner-plan p { margin: 0; font-size: 14px; line-height: 1.4; }
+.banner-plan .btn { justify-self: start; }
+.banner-plan.bloqueado { background: #FDE7E4; color: #6B1A10; }
+.banner-plan.bloqueado .btn { justify-self: stretch; }
+.linea-plan { margin: 0 0 6px; font-size: 13.5px; color: var(--suave); }
+.caja-admin { border: 1.5px solid var(--marca); }
+.estado-cliente { flex: none; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: #E3F5EA; color: #13663A; }
+.estado-cliente.prueba { background: var(--marca-suave); color: var(--acento); }
+.estado-cliente.por-vencer { background: #FFF1D6; color: #7A4B00; }
+.estado-cliente.vencido { background: #FDE7E4; color: #8E2215; }
+.estado-cliente.pausado { background: #ECEBEF; color: #55535C; }
+.miembro.cliente small { line-height: 1.35; }
+.btn-consultar { min-height: 38px; padding: 0 14px; }
+.btn-consultar svg { width: 18px; height: 18px; }
+#cl-vence { width: 100%; }
+.prod .btn-consultar { background: #1F9D55; border-color: #1F9D55; color: #fff; }
+.pagina > * { min-width: 0; }
+.lista-equipo { grid-template-columns: minmax(0, 1fr); }
+.miembro { min-width: 0; }
+.caja { min-width: 0; }

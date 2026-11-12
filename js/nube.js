@@ -467,7 +467,12 @@ window.NUBE = (function () {
       try {
         const nid = await asegurarNegocio();
         const l = await traerLugar();
-        if (l && l.activo === false) { poner('error', 'Tu cuenta de Mostrador está pausada. Hablá con Mostrador para volver a activarla.'); return; }
+        if (l && (l.activo === false || l.vencido)) {
+          poner('bloqueado', l.activo === false ? 'Tu cuenta de Mostrador está pausada.' : l.plan === 'prueba' ? 'Terminó tu prueba gratis.' : 'Venció tu plan de Mostrador.');
+          return;
+        }
+        let libres = l && l.limite_productos != null ? Math.max(0, l.limite_productos - (l.productos || 0)) : Infinity;
+        let sinLugar = 0;
         await subirAjustes();
         await traerAjustes();
         const rechazos = [];
@@ -501,9 +506,11 @@ window.NUBE = (function () {
         estado.pendientes = pend.length;
         let hechos = 0;
         for (const p of pend) {
+          const viejo = p._nube || yaSubido[p.id] || { fotos: [] };
+          // Producto nuevo y el plan ya llegó a su máximo: queda en el celular sin subir
+          if (!(viejo.foto && viejo.foto.path) && libres <= 0) { sinLugar++; hechos++; continue; }
           poner('sincronizando', 'Guardando en internet ' + (hechos + 1) + ' de ' + pend.length + '…');
           const cambio = p._cambio;
-          const viejo = p._nube || yaSubido[p.id] || { fotos: [] };
           const fotos = (p.fotos || []).map((f) => (typeof f === 'string' ? { src: f, diseno: true } : f));
           p.fotos = fotos;
           const nube = { foto: await subirFoto(nid, p.id, p.foto, viejo.foto), recorte: await subirFoto(nid, p.id, p.recorte, viejo.recorte), mini: await subirMini(nid, p.id, p.foto, viejo.mini), fotos: [] };
@@ -513,6 +520,7 @@ window.NUBE = (function () {
             if (yaEstaba) await pedirConSesion('/rest/v1/productos?negocio_id=eq.' + nid + '&id=eq.' + encodeURIComponent(p.id), { metodo: 'PATCH', json: { datos: datosDe(p, nube) }, cabeceras: { Prefer: 'return=minimal' } });
             else await pedirConSesion('/rest/v1/productos?on_conflict=negocio_id,id', { metodo: 'POST', json: [{ id: p.id, negocio_id: nid, datos: datosDe(p, nube), borrado: false }], cabeceras: { Prefer: 'resolution=merge-duplicates,return=minimal' } });
           } catch (e) {
+            if (/limite de productos/.test(e.message)) { libres = 0; sinLugar++; hechos++; await borrarFotos(caminos(nube).filter((x) => caminos(viejo).indexOf(x) < 0)); continue; }
             if (!rechazado(e)) throw e;
             // Sin permiso: lo nuevo se saca del celular; lo cambiado vuelve a como está en internet
             await borrarFotos(caminos(nube).filter((x) => caminos(viejo).indexOf(x) < 0));
@@ -523,6 +531,7 @@ window.NUBE = (function () {
             continue;
           }
           yaSubido[p.id] = nube;
+          if (!yaEstaba) libres--;
           // fotos que ya no se usan
           const usadas = caminos(nube);
           await borrarFotos(caminos(viejo).filter((x) => usadas.indexOf(x) < 0));
@@ -581,9 +590,11 @@ window.NUBE = (function () {
         }
         if (ultima) escribirLocal(K.bajada, ultima);
 
-        estado.pendientes = (await A.todos()).filter((p) => p._pendiente && !esEjemplo(p)).length;
+        estado.pendientes = Math.max(0, (await A.todos()).filter((p) => p._pendiente && !esEjemplo(p)).length - sinLugar);
+        estado.sinLugar = sinLugar;
         estado.ultima = Date.now();
-        poner(estado.pendientes ? 'sincronizando' : 'al-dia', estado.pendientes ? 'Quedan cambios por subir' : '');
+        if (sinLugar && !estado.pendientes) poner('limite', 'Llegaste al máximo de ' + l.limite_productos + ' productos de tu plan: ' + sinLugar + (sinLugar === 1 ? ' quedó' : ' quedaron') + ' solo en este celular.');
+        else poner(estado.pendientes ? 'sincronizando' : 'al-dia', estado.pendientes ? 'Quedan cambios por subir' : '');
         if (estado.pendientes) otraVez = true;
       } catch (e) {
         if (!sesion || e.codigo === 'baja') { poner('sin-cuenta', estado.mensaje); }
@@ -674,8 +685,18 @@ window.NUBE = (function () {
     unirse: unirseAhora
   };
 
+  /* ---------------- Administrador (Ariel) ---------------- */
+  const admin = {
+    lista: () => llamar('admin_negocios'),
+    guardar: (d) => llamar('admin_guardar', { p_negocio: d.id, p_activo: d.activo, p_plan: d.plan, p_vence: d.vence || null, p_limite_productos: d.limite_productos, p_limite_vendedores: d.limite_vendedores }),
+    contacto: (wa) => llamar('admin_contacto', { p_whatsapp: wa })
+  };
+
   return {
     get sesion() { return sesion; },
+    admin: admin,
+    get esAdmin() { const l = lugar(); return !!(l && l.admin); },
+    actualizarLugar: () => (sesion ? traerLugar().catch(() => null) : Promise.resolve(null)),
     get lugar() { return lugar(); },
     esDueno: esDueno,
     puede: puede,

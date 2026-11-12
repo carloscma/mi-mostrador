@@ -60,6 +60,21 @@
     return !p || !p.id || !p._nube || p.autor === (NUBE.sesion && NUBE.sesion.user && NUBE.sesion.user.id);
   }
   function esVendedor() { return !!(window.NUBE && NUBE.sesion && !NUBE.esDueno()); }
+  // Plan: límite de productos (la prueba gratis y el plan gratis tienen tope)
+  function lugarNube() { return window.NUBE && NUBE.sesion ? NUBE.lugar : null; }
+  function lugaresLibres() {
+    const l = lugarNube();
+    if (!l || l.limite_productos == null) return Infinity;
+    const propios = estado.productos.filter((p) => !/^ejemplo/.test(p.id)).length;
+    return Math.max(0, l.limite_productos - propios);
+  }
+  function avisoLimite() { const l = lugarNube(); avisar('Llegaste al máximo de ' + l.limite_productos + ' productos de tu plan. Borrá alguno para cargar otro.'); }
+  function diasQuedan(vence) {
+    if (!vence) return null;
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const v = new Date(vence + 'T00:00:00');
+    return Math.round((v - hoy) / 864e5);
+  }
   function cantidadFotos(p) { return 1 + ((p.fotos && p.fotos.length) || 0); }
   // Total del pedido separado por moneda: "$ 25.000 + US$ 1.200"
   function totalTexto(lineas) {
@@ -188,23 +203,24 @@
   /* ---------------- Navegación ---------------- */
   function vistaActual() {
     const h = location.hash.replace(/^#/, '');
-    return ['editor', 'catalogo', 'ajustes', 'precios', 'completar', 'equipo'].indexOf(h) >= 0 ? h : 'inicio';
+    return ['editor', 'catalogo', 'ajustes', 'precios', 'completar', 'equipo', 'admin'].indexOf(h) >= 0 ? h : 'inicio';
   }
 
   function navegar() {
     if (ALIAS_PUBLICO) { if (estado.publico) { cerrarCapa(); app.innerHTML = vistaCatalogo(); } return; }
     cerrarCapa();
     guardarPendientes();
-    if (!ajustes.tipoNegocio && vistaActual() === 'inicio') setTimeout(() => { if (!estado.capa && !ajustes.tipoNegocio) abrirCapa({ tipo: 'negocio' }); }, 300);
+    if (!ajustes.tipoNegocio && vistaActual() === 'inicio') setTimeout(() => { if (!estado.capa && !ajustes.tipoNegocio && vistaActual() === 'inicio') abrirCapa({ tipo: 'negocio' }); }, 300);
     let v = vistaActual();
     if (v === 'editor' && !estado.editor) { location.replace('#inicio'); v = 'inicio'; }
-    if ((v === 'precios' && !puede('editar') && !puede('precios')) || (v === 'equipo' && esVendedor())) { location.replace('#inicio'); v = 'inicio'; }
+    if ((v === 'precios' && !puede('editar') && !puede('precios')) || (v === 'equipo' && esVendedor()) || (v === 'admin' && !(window.NUBE && NUBE.esAdmin))) { location.replace('#inicio'); v = 'inicio'; }
     document.body.dataset.vista = v;
     if (v === 'editor') { app.innerHTML = vistaEditor(); prepararEditor(); }
     else if (v === 'catalogo') app.innerHTML = vistaCatalogo();
     else if (v === 'ajustes') app.innerHTML = vistaAjustes();
     else if (v === 'precios') app.innerHTML = vistaPrecios();
     else if (v === 'equipo') { app.innerHTML = vistaEquipo(); cargarEquipo(); }
+    else if (v === 'admin') { app.innerHTML = vistaAdmin(); cargarAdmin(); }
     else if (v === 'completar') {
       app.innerHTML = vistaCompletar();
       const id = estado.filaCompletar;
@@ -318,7 +334,7 @@
       '<label class="btn-muchos" for="carga-rapida"><b>¿Ya tenés las fotos?</b> Cargá muchos productos juntos →</label>' +
       '<input class="oculto" id="carga-rapida" type="file" accept="image/*" multiple data-accion="carga-rapida">') +
       '</section>' +
-      bannerCuenta() +
+      bannerPlan() + bannerCuenta() +
       (ps.some(incompleto) ? '<a class="aviso-completar" href="#completar"><b>' + ps.filter(incompleto).length + '</b> ' + (ps.filter(incompleto).length === 1 ? 'producto sin nombre o precio' : 'productos sin nombre o precio') + '<span>Completar →</span></a>' : '') +
       '<section class="seccion">' +
       '<div class="fila"><h2>Tus productos <small>' + (ps.length || '') + '</small></h2>' +
@@ -330,6 +346,7 @@
 
   // Primera foto = principal; las demás (hasta 10 en total) van al mismo producto
   async function nuevaFoto(archivo, otras) {
+    if (lugaresLibres() <= 0) { avisoLimite(); return; }
     otras = otras || [];
     const max = 10;
     const sobran = Math.max(0, otras.length - (max - 1));
@@ -1070,6 +1087,7 @@
         '<div class="tipos-negocio">' + op.map((o) => '<button class="tipo-negocio" data-accion="elegir-negocio" data-tipo="' + o[0] + '"' + (ajustes.tipoNegocio === o[0] ? ' aria-pressed="true"' : '') + '><b>' + o[1] + '</b><span>' + o[2] + '</span></button>').join('') + '</div>';
       pie = '';
     }
+    else if (c.tipo === 'cliente') { const h = hojaCliente(c); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
     else if (c.tipo === 'invitar') { const h = hojaInvitar(c); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
     else if (c.tipo === 'permisos') { const h = hojaPermisos(c); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
     else if (c.tipo === 'unirse') { const h = hojaUnirse(c); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
@@ -1250,7 +1268,19 @@
     return cant ? '<div class="barra-abajo"><button class="btn btn-wa btn-ancho fila btn-pedido" data-accion="ver-pedido"><span class="con-logo-wa">' + ICONO_WA + 'Enviar pedido · ' + cant + '</span><span>' + esc(totalTexto(ls)) + '</span></button></div>' : '';
   }
 
+  // Autos y motos: no se "compran" desde el catálogo, se consultan
+  function linkConsulta(p) {
+    const det = detalleAuto(p);
+    const texto = 'Hola! Quiero consultar por ' + (p.nombre || 'el vehículo') + (det ? ' (' + det + ')' : '') + ' a ' + precioDe(p) + ', que vi en tu catálogo.' +
+      (estado.publico && estado.publico.vendedor ? '\nVendedor: ' + estado.publico.vendedor : '');
+    return 'https://wa.me/' + (ajustes.whatsapp || '') + '?text=' + encodeURIComponent(texto);
+  }
+  function botonConsultar(p, ancho) {
+    return '<a class="btn btn-wa btn-chico btn-con-icono btn-consultar' + (ancho ? ' btn-ancho' : '') + '" href="' + esc(linkConsulta(p)) + '" target="_blank" rel="noopener">' + ICONO_WA + 'Consultar</a>';
+  }
+
   function botonCantidad(p) {
+    if (esVehiculo(p)) return botonConsultar(p, false);
     const n = estado.pedido[p.id] || 0;
     return n ? '<div class="paso-cant"><button data-accion="menos" data-id="' + esc(p.id) + '" aria-label="Restar">−</button><span>' + n + '</span><button data-accion="mas" data-id="' + esc(p.id) + '" aria-label="Sumar">+</button></div>'
       : '<button class="btn btn-chico" data-accion="mas" data-id="' + esc(p.id) + '">Agregar</button>';
@@ -1291,7 +1321,7 @@
       '<div class="ficha"><span class="ficha-precio">' + esc(precioDe(p)) + '</span>' +
       (datos.length ? '<dl class="ficha-datos">' + datos.map((d) => '<div><dt>' + d[0] + '</dt><dd>' + esc(d[1]) + '</dd></div>').join('') + '</dl>' : '') +
       (extras.length ? '<div class="ficha-extras">' + extras.map((x) => '<span>✓ ' + esc(x) + '</span>').join('') + '</div>' : '') + '</div>',
-      '<div id="cant-detalle" class="cant-detalle">' + botonCantidad(p) + '</div>'];
+      esVehiculo(p) ? botonConsultar(p, true).replace('>' + ICONO_WA + 'Consultar<', '>' + ICONO_WA + 'Consultar por WhatsApp<') : '<div id="cant-detalle" class="cant-detalle">' + botonCantidad(p) + '</div>'];
   }
 
   function hojaPedido() {
@@ -1315,7 +1345,9 @@
 
   async function cargaRapida(archivos) {
     await guardarPendientes();
-    const lista = archivos.slice(0, MAX_CARGA);
+    const libres = lugaresLibres();
+    if (libres <= 0) { avisoLimite(); return; }
+    const lista = archivos.slice(0, Math.min(MAX_CARGA, libres));
     const sobran = archivos.length - lista.length;
     const ids = [];
     let codigo = parseInt(siguienteCodigo(), 10);
@@ -1536,6 +1568,7 @@
     return '<header class="barra-top"><a class="btn-texto" href="#inicio">← Volver</a><b>Ajustes</b><span></span></header>' +
       '<main class="pagina ajustes">' +
       '<div id="caja-cuenta">' + cajaCuenta() + '</div>' +
+      (window.NUBE && NUBE.esAdmin ? '<a class="caja caja-equipo caja-admin" href="#admin"><b>Panel de administrador</b><span>Tus clientes: planes, pruebas y vencimientos</span><i>→</i></a>' : '') +
       (window.NUBE && NUBE.sesion ? '<a class="caja caja-equipo" href="#equipo"><b>Tus vendedores</b><span>Invitá a tu equipo y elegí qué puede hacer cada uno</span><i>→</i></a>' : '') +
       '<div class="campo"><label for="a-tipo">¿Qué vendés?</label><select id="a-tipo" data-ajuste="tipoNegocio">' +
       [['productos', 'Productos'], ['vehiculos', 'Autos y motos'], ['ambos', 'Las dos cosas']].map((o) => '<option value="' + o[0] + '"' + ((ajustes.tipoNegocio || 'productos') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') +
@@ -1565,7 +1598,9 @@
     'al-dia': ['Guardado', 'Tus productos están guardados en internet.'],
     'sincronizando': ['Guardando…', 'Guardando en internet…'],
     'sin-conexion': ['Sin internet', 'Sin internet: se guarda cuando vuelva la conexión.'],
-    'error': ['Revisar', 'No se pudo guardar en internet.']
+    'error': ['Revisar', 'No se pudo guardar en internet.'],
+    'bloqueado': ['Pausado', 'Tu cuenta no está activa.'],
+    'limite': ['Límite', 'Llegaste al máximo de productos de tu plan.']
   };
   const ICONO_NUBE = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .6-8A6 6 0 0 0 6 9.5 4.3 4.3 0 0 0 7 18z"/></svg>';
 
@@ -1595,7 +1630,7 @@
     const t = NUBE_TEXTOS[e.fase] || NUBE_TEXTOS['al-dia'];
     return '<section class="caja caja-cuenta"><h2>Tu cuenta</h2>' +
       '<p class="cuenta-correo">' + esc(NUBE.email || 'Cuenta conectada') + '</p>' +
-      (esVendedor() ? '<p class="cuenta-rol">Vendedor de <b>' + esc(ajustes.negocio) + '</b></p>' : '') +
+      (esVendedor() ? '<p class="cuenta-rol">Vendedor de <b>' + esc(ajustes.negocio) + '</b></p>' : '') + lineaPlan() +
       '<p class="estado-nube nube-' + e.fase + '">' + ICONO_NUBE + '<span>' + esc(e.mensaje || t[1]) + '</span></p>' +
       (e.ultima ? '<p class="nota">Última vez: ' + new Date(e.ultima).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + '</p>' : '') +
       '<button class="btn btn-marca btn-ancho btn-link-catalogo" data-accion="compartir-link">Link de tu catálogo para tus clientes</button>' +
@@ -1705,6 +1740,7 @@
     else if (v === 'completar') app.innerHTML = vistaCompletar();
     else if (v === 'ajustes') app.innerHTML = vistaAjustes();
     else if (v === 'equipo') { if (esVendedor()) location.hash = 'inicio'; else cargarEquipo(); }
+    else if (v === 'admin') { /* el panel se actualiza solo al entrar */ }
     window.scrollTo(0, y);
   }
 
@@ -1768,6 +1804,169 @@
     } catch (e) { datos.error = e.message; }
     datos.cargando = false;
     if (estado.capa === datos) renderCapa(false);
+  }
+
+  /* ================= Plan: prueba gratis, vencimiento y límite ================= */
+  function linkContacto(motivo) {
+    const l = lugarNube() || {};
+    const texto = 'Hola! ' + motivo + ' Mi negocio: ' + ajustes.negocio + '. Mi correo: ' + (NUBE.email || '') + '.';
+    return 'https://wa.me/' + (l.contacto || '') + '?text=' + encodeURIComponent(texto);
+  }
+
+  function bannerPlan() {
+    const l = lugarNube();
+    if (!l) return '';
+    if (l.activo === false || l.vencido) {
+      const titulo = l.activo === false ? 'Tu cuenta está pausada' : l.plan === 'prueba' ? 'Terminó tu prueba gratis' : 'Venció tu plan';
+      if (l.rol === 'vendedor') {
+        return '<div class="banner-plan bloqueado"><b>' + titulo + '</b><p>El plan de ' + esc(ajustes.negocio) + ' no está activo. Avisale al dueño del negocio.</p></div>';
+      }
+      return '<div class="banner-plan bloqueado"><b>' + titulo + '</b>' +
+        '<p>Tus productos no se borraron: siguen guardados. Para volver a usar tu catálogo y guardar en internet, hablá con Mostrador.</p>' +
+        '<a class="btn btn-wa btn-ancho btn-con-icono" href="' + esc(linkContacto(l.activo === false ? 'Quiero volver a activar mi cuenta de Mostrador.' : 'Quiero seguir usando Mostrador.')) + '" target="_blank" rel="noopener">' + ICONO_WA + 'Hablar con Mostrador</a></div>';
+    }
+    const d = diasQuedan(l.vence);
+    if (l.plan === 'prueba' && d !== null && d <= 3 && l.rol === 'dueno') {
+      return '<div class="banner-plan"><b>' + (d <= 0 ? 'Hoy es el último día de tu prueba gratis' : 'Te ' + (d === 1 ? 'queda 1 día' : 'quedan ' + d + ' días') + ' de prueba gratis') + '</b>' +
+        '<p>Para seguir usando Mostrador cuando termine, hablá con nosotros.</p>' +
+        '<a class="btn btn-wa btn-chico btn-con-icono" href="' + esc(linkContacto('Quiero seguir usando Mostrador cuando termine la prueba.')) + '" target="_blank" rel="noopener">' + ICONO_WA + 'Hablar con Mostrador</a></div>';
+    }
+    return '';
+  }
+
+  function lineaPlan() {
+    const l = lugarNube();
+    if (!l || l.rol !== 'dueno' || l.plan === 'propio') return '';
+    const partes = [];
+    const d = diasQuedan(l.vence);
+    if (l.plan === 'prueba') partes.push(d === null ? 'Prueba gratis' : d < 0 ? 'Prueba gratis terminada' : 'Prueba gratis: ' + (d === 0 ? 'último día' : d === 1 ? 'queda 1 día' : 'quedan ' + d + ' días'));
+    else if (l.vence) partes.push(d < 0 ? 'Plan vencido' : 'Plan activo hasta el ' + new Date(l.vence + 'T00:00:00').toLocaleDateString('es-AR'));
+    if (l.limite_productos != null) partes.push('Productos: ' + estado.productos.filter((p) => !/^ejemplo/.test(p.id)).length + ' de ' + l.limite_productos);
+    return partes.length ? '<p class="linea-plan">' + esc(partes.join(' · ')) + '</p>' : '';
+  }
+
+  /* ================= Panel de administrador (Ariel) ================= */
+  const PLANES = {
+    prueba: { nombre: 'Prueba gratis', productos: 50, vendedores: 2, dias: 7 },
+    gratis: { nombre: 'Gratis permanente', productos: 50, vendedores: 0, dias: null },
+    emprendedor: { nombre: 'Emprendedor', productos: null, vendedores: 0, dias: 30 },
+    comercio: { nombre: 'Comercio', productos: null, vendedores: 3, dias: 30 },
+    mayorista: { nombre: 'Mayorista', productos: null, vendedores: 10, dias: 30 },
+    concesionaria: { nombre: 'Concesionaria', productos: null, vendedores: 10, dias: 30 },
+    propio: { nombre: 'Tu negocio', productos: null, vendedores: 50, dias: null }
+  };
+  estado.admin = null;
+  estado.filtroAdmin = { q: '', f: 'todos' };
+
+  function estadoCliente(n) {
+    const d = diasQuedan(n.vence);
+    if (!n.activo) return ['pausado', 'Pausado'];
+    if (d !== null && d < 0) return ['vencido', n.plan === 'prueba' ? 'Prueba terminada' : 'Vencido'];
+    if (n.plan === 'prueba') return ['prueba', d === null ? 'En prueba' : 'Prueba: ' + (d === 0 ? 'último día' : d + (d === 1 ? ' día' : ' días'))];
+    if (d !== null && d <= 5) return ['por-vencer', 'Vence en ' + d + (d === 1 ? ' día' : ' días')];
+    return ['activo', 'Activo'];
+  }
+  function fechaCorta(x) { return x ? new Date(String(x).length <= 10 ? x + 'T00:00:00' : x).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }) : '—'; }
+
+  function vistaAdmin() {
+    const a = estado.admin;
+    const f = estado.filtroAdmin;
+    let cuerpo = '<p class="detalle">Cargando tus clientes…</p>';
+    if (a && a.error) cuerpo = '<p class="error-cuenta">' + esc(a.error) + '</p><button class="btn btn-chico" data-accion="reintentar-admin">Probar de nuevo</button>';
+    else if (a) {
+      const todos = a.negocios.filter((n) => !n.yo);
+      const cuenta = { todos: todos.length, prueba: 0, vencido: 0, pago: 0, pausado: 0 };
+      todos.forEach((n) => {
+        const e = estadoCliente(n)[0];
+        if (e === 'pausado') cuenta.pausado++;
+        else if (e === 'vencido') cuenta.vencido++;
+        else if (n.plan === 'prueba') cuenta.prueba++;
+        else if (n.plan !== 'gratis') cuenta.pago++;
+      });
+      const q = RUBROS.normalizar(f.q);
+      const lista = todos.filter((n) => {
+        const e = estadoCliente(n)[0];
+        if (f.f === 'prueba' && !(n.plan === 'prueba' && e !== 'vencido' && e !== 'pausado')) return false;
+        if (f.f === 'vencido' && e !== 'vencido') return false;
+        if (f.f === 'pausado' && e !== 'pausado') return false;
+        if (f.f === 'pago' && (n.plan === 'prueba' || n.plan === 'gratis' || e === 'vencido' || e === 'pausado')) return false;
+        return !q || RUBROS.normalizar([n.nombre, n.email, n.whatsapp, n.alias].join(' ')).indexOf(q) >= 0;
+      });
+      cuerpo = '<div class="chips" role="group" aria-label="Filtrar clientes">' +
+        [['todos', 'Todos'], ['prueba', 'En prueba'], ['pago', 'Pagan'], ['vencido', 'Vencidos'], ['pausado', 'Pausados']].map((x) =>
+          '<button class="chip" data-accion="filtro-admin" data-f="' + x[0] + '" aria-pressed="' + (f.f === x[0]) + '">' + x[1] + ' <b>' + cuenta[x[0]] + '</b></button>').join('') + '</div>' +
+        '<div class="lista-equipo">' + (lista.length ? lista.map((n) => {
+          const e = estadoCliente(n);
+          return '<button class="miembro cliente" data-accion="ver-cliente" data-id="' + esc(n.id) + '"><div><b>' + esc(n.nombre || 'Sin nombre') + '</b><span>' + esc(n.email || '') + '</span>' +
+            '<small>' + esc((PLANES[n.plan] || { nombre: n.plan }).nombre) + ' · ' + n.productos + (n.limite_productos != null ? '/' + n.limite_productos : '') + ' productos · ' + n.vendedores + ' vend. · alta ' + fechaCorta(n.creado) + '</small></div>' +
+            '<span class="estado-cliente ' + e[0] + '">' + esc(e[1]) + '</span></button>';
+        }).join('') : '<p class="detalle">No hay clientes' + (f.q || f.f !== 'todos' ? ' con ese filtro' : ' todavía') + '.</p>') + '</div>';
+    }
+    return '<header class="barra-top"><a class="btn-texto" href="#ajustes">← Ajustes</a><b>Administrador</b><span></span></header>' +
+      '<main class="pagina ajustes">' +
+      '<section class="caja"><h2>Tus clientes</h2>' +
+      '<label class="buscador"><span class="sr">Buscar clientes</span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>' +
+      '<input type="search" id="buscar-admin" placeholder="Buscar por nombre, correo o WhatsApp" value="' + esc(f.q) + '" autocomplete="off"></label>' +
+      '<div id="lista-admin">' + cuerpo + '</div></section>' +
+      '<section class="caja"><h2>Tu WhatsApp de Mostrador</h2><p class="detalle">A este número te escriben los clientes cuando se les termina la prueba o se les vence el plan.</p>' +
+      '<div class="caja-link"><input id="admin-wa" inputmode="tel" value="' + esc((a && a.whatsapp) || '') + '" placeholder="Ej: 5491123456789"><button class="btn btn-chico btn-marca" data-accion="guardar-contacto">Guardar</button></div></section>' +
+      '</main>';
+  }
+
+  async function cargarAdmin() {
+    try { estado.admin = await NUBE.admin.lista(); } catch (e) { estado.admin = { error: e.message }; }
+    refrescarAdmin();
+  }
+  function refrescarAdmin() {
+    if (vistaActual() !== 'admin') return;
+    const enfocado = document.activeElement && document.activeElement.id;
+    const y = window.scrollY; app.innerHTML = vistaAdmin(); window.scrollTo(0, y);
+    if (enfocado === 'buscar-admin') { const i = document.getElementById('buscar-admin'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+  }
+
+  function hojaCliente(c) {
+    const n = c.n, d = c.datos;
+    const e = estadoCliente(Object.assign({}, n, d));
+    const wa = n.whatsapp ? '<a href="https://wa.me/' + esc(n.whatsapp) + '" target="_blank" rel="noopener">' + esc(n.whatsapp) + '</a>' : 'sin WhatsApp';
+    return [n.nombre || 'Cliente',
+      '<p class="detalle">' + esc(n.email || '') + ' · ' + wa + '</p>' +
+      '<p class="nota">' + n.productos + ' productos · ' + n.vendedores + ' vendedores · alta ' + fechaCorta(n.creado) + ' · último cambio ' + fechaCorta(n.ultimo) +
+      (n.alias ? ' · <a href="' + esc(location.origin + location.pathname.replace(/index\.html$/, '') + '?c=' + n.alias) + '" target="_blank" rel="noopener">ver catálogo</a>' : '') + '</p>' +
+      '<p><span class="estado-cliente ' + e[0] + '">' + esc(e[1]) + '</span></p>' +
+      '<label class="interruptor"><input type="checkbox" id="cl-activo"' + (d.activo ? ' checked' : '') + '><span>Cuenta activa (si la apagás, no puede usar Mostrador)</span></label>' +
+      '<div class="campo"><label for="cl-plan">Plan</label><select id="cl-plan">' +
+      Object.keys(PLANES).map((k) => '<option value="' + k + '"' + (d.plan === k ? ' selected' : '') + '>' + PLANES[k].nombre + '</option>').join('') +
+      (PLANES[d.plan] ? '' : '<option value="' + esc(d.plan) + '" selected>' + esc(d.plan) + '</option>') + '</select></div>' +
+      '<div class="campo"><label for="cl-vence">Vence el</label><input id="cl-vence" type="date" value="' + esc(d.vence || '') + '">' +
+      '<div class="fila-botones"><button class="btn btn-chico" data-accion="sumar-dias" data-d="7">+7 días</button><button class="btn btn-chico" data-accion="sumar-dias" data-d="30">+30 días</button><button class="btn btn-chico" data-accion="sumar-dias" data-d="0">Sin vencimiento</button></div></div>' +
+      '<div class="fila-aumento"><div class="campo"><label for="cl-lp">Máximo de productos</label><input id="cl-lp" inputmode="numeric" value="' + (d.limite_productos == null ? '' : d.limite_productos) + '" placeholder="Sin límite"></div>' +
+      '<div class="campo"><label for="cl-lv">Vendedores (además del dueño)</label><input id="cl-lv" inputmode="numeric" value="' + (d.limite_vendedores == null ? 0 : d.limite_vendedores) + '"></div></div>' +
+      (c.error ? '<p class="error-cuenta">' + esc(c.error) + '</p>' : ''),
+      '<button class="btn btn-marca btn-ancho" data-accion="guardar-cliente"' + (c.ocupado ? ' disabled' : '') + '>' + (c.ocupado ? 'Guardando…' : 'Guardar') + '</button>'];
+  }
+
+  function leerHojaCliente() {
+    const c = estado.capa, d = c.datos;
+    const v = (id) => document.getElementById(id);
+    d.activo = v('cl-activo').checked;
+    d.plan = v('cl-plan').value;
+    d.vence = v('cl-vence').value || null;
+    const lp = v('cl-lp').value.replace(/\D/g, '');
+    d.limite_productos = lp === '' ? null : Number(lp);
+    d.limite_vendedores = Number(v('cl-lv').value.replace(/\D/g, '') || 0);
+  }
+  function hoyMas(dias, desde) {
+    const base = new Date(); base.setHours(0, 0, 0, 0);
+    if (desde) { const x = new Date(desde + 'T00:00:00'); if (x > base) base.setTime(x.getTime()); }
+    base.setDate(base.getDate() + dias);
+    return base.getFullYear() + '-' + String(base.getMonth() + 1).padStart(2, '0') + '-' + String(base.getDate()).padStart(2, '0');
+  }
+  async function guardarCliente() {
+    leerHojaCliente();
+    const c = estado.capa;
+    c.ocupado = true; c.error = ''; renderCapa(false);
+    try { await NUBE.admin.guardar(Object.assign({ id: c.n.id }, c.datos)); cerrarCapa(); avisar('Cliente guardado'); cargarAdmin(); }
+    catch (e) { c.ocupado = false; c.error = e.message; renderCapa(false); }
   }
 
   /* ================= Equipo: vendedores y permisos ================= */
@@ -1984,6 +2183,7 @@
       const p = estado.productos.find((x) => x.id === el.dataset.id);
       cerrarCapa();
       if (!p) return;
+      if (lugaresLibres() <= 0) { avisoLimite(); return; }
       const copia = JSON.parse(JSON.stringify(p));
       copia.id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       copia.nombre = (p.nombre || 'Producto') + ' (copia)';
@@ -2116,6 +2316,21 @@
     'cancelar-invitacion': async (el) => { try { await NUBE.equipo.cancelar(el.dataset.c); avisar('Invitación cancelada'); cargarEquipo(); } catch (e) { avisar(e.message); } },
     'unirme': () => unirmeAhora(),
     'guardar-mis-datos': () => guardarMisDatos(),
+    'reintentar-admin': () => { estado.admin = null; refrescarAdmin(); cargarAdmin(); },
+    'filtro-admin': (el) => { estado.filtroAdmin.f = el.dataset.f; refrescarAdmin(); },
+    'ver-cliente': (el) => {
+      const n = (estado.admin && estado.admin.negocios || []).find((x) => x.id === el.dataset.id);
+      if (n) abrirCapa({ tipo: 'cliente', n: n, datos: { activo: n.activo, plan: n.plan, vence: n.vence, limite_productos: n.limite_productos, limite_vendedores: n.limite_vendedores } });
+    },
+    'sumar-dias': (el) => {
+      leerHojaCliente();
+      const d = estado.capa.datos, dias = Number(el.dataset.d);
+      d.vence = dias ? hoyMas(dias, d.vence) : null;
+      if (dias) d.activo = true;
+      renderCapa(false);
+    },
+    'guardar-cliente': () => guardarCliente(),
+    'guardar-contacto': async () => { const i = document.getElementById('admin-wa'); try { await NUBE.admin.contacto(i.value); avisar('WhatsApp guardado'); NUBE.actualizarLugar(); } catch (e) { avisar(e.message); } },
     'reintentar-equipo': () => { estado.equipo = null; app.innerHTML = vistaEquipo(); cargarEquipo(); },
     'copiar-link': async () => {
       const i = document.getElementById('link-catalogo');
@@ -2165,6 +2380,7 @@
   document.addEventListener('input', (ev) => {
     const el = ev.target;
     if (el.dataset.buscar) { estado.filtro.q = el.value; refrescarListas(); return; }
+    if (el.id === 'buscar-admin') { estado.filtroAdmin.q = el.value; refrescarAdmin(); return; }
     if (el.dataset.completar) {
       const p = estado.productos.find((x) => x.id === el.dataset.id);
       if (!p) return;
@@ -2243,6 +2459,12 @@
 
   document.addEventListener('change', (ev) => {
     if (ev.target.dataset.permiso && estado.capa && estado.capa.tipo === 'permisos') { estado.capa.permisos[ev.target.dataset.permiso] = ev.target.checked; return; }
+    if (ev.target.id === 'cl-plan' && estado.capa && estado.capa.tipo === 'cliente') {
+      leerHojaCliente();
+      const d = estado.capa.datos, pl = PLANES[d.plan];
+      if (pl) { d.limite_productos = pl.productos; d.limite_vendedores = pl.vendedores; d.vence = pl.dias ? hoyMas(pl.dias) : null; d.activo = true; }
+      renderCapa(false); return;
+    }
     if (ev.target.id === 'pedidos-a') { ajustes.pedidosA = ev.target.value; guardarAjustes(); avisar('Guardado'); return; }
     const el = ev.target;
     if (el.dataset.campo === 'rubro' && estado.editor) {
