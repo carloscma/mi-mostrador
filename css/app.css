@@ -585,3 +585,24 @@ body[data-vista="editor"] #aviso { top: calc(70px + env(safe-area-inset-top)); }
 .btn-pedido { justify-content: space-between; box-shadow: 0 6px 18px rgb(31 157 85 / .35); }
 .con-logo-wa { display: inline-flex; align-items: center; gap: 8px; }
 .con-logo-wa svg { width: 22px; height: 22px; }
+
+/* ---------- Etapa 14: vendedores y permisos ---------- */
+.caja-equipo { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; text-decoration: none; color: var(--texto); }
+.caja-equipo b { font-size: 17px; }
+.caja-equipo span { grid-column: 1; color: var(--suave); font-size: 14px; }
+.caja-equipo i { grid-column: 2; grid-row: 1 / span 2; font-style: normal; font-size: 20px; color: var(--acento); }
+.lista-equipo { display: grid; gap: 8px; margin: 10px 0 12px; }
+.miembro { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 12px 14px; border: 1px solid var(--borde); border-radius: 14px; background: var(--superficie); color: var(--texto); font: inherit; text-align: left; }
+button.miembro { cursor: pointer; }
+.miembro div { display: grid; gap: 2px; min-width: 0; }
+.miembro span { color: var(--suave); font-size: 13px; word-break: break-all; }
+.miembro small { color: var(--suave); font-size: 12.5px; }
+.miembro i { font-style: normal; font-weight: 700; color: var(--acento); font-size: 13.5px; white-space: nowrap; }
+.miembro.pendiente { border-style: dashed; }
+.permisos { display: grid; gap: 4px; margin: 6px 0; }
+.interruptor.permiso span { display: grid; gap: 1px; }
+.interruptor.permiso small { color: var(--suave); font-size: 13px; font-weight: 400; }
+.cuenta-rol { margin: -2px 0 6px; color: var(--suave); font-size: 14px; }
+.sin-permiso { margin: 12px 0 0; padding: 12px; border-radius: 12px; background: var(--fondo); }
+#pedidos-a { width: 100%; padding: 12px; border: 1px solid var(--borde); border-radius: 12px; font: inherit; background: var(--superficie); color: var(--texto); }
+.btn-texto.peligro { justify-self: center; }

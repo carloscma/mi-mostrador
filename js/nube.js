@@ -22,7 +22,9 @@ window.NUBE = (function () {
     bajada: 'mostrador:ultima-bajada',
     borrados: 'mostrador:borrados',
     ajustesPend: 'mostrador:ajustes-pendientes',
-    alias: 'mostrador:alias'
+    alias: 'mostrador:alias',
+    lugar: 'mostrador:lugar',
+    unirse: 'mostrador:unirse'
   };
 
   function leerLocal(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
@@ -142,7 +144,21 @@ window.NUBE = (function () {
   // Al entrar: ver de quién son los productos que hay en este celular
   async function alEntrar() {
     poner('sincronizando', 'Conectando tu cuenta…');
+    const codigo = leerLocal(K.unirse);
+    if (codigo) {
+      // Entró con el link de invitación de un negocio
+      escribirLocal(K.unirse, null);
+      try {
+        const n = await rpc('unirse', { p_codigo: codigo });
+        escribirLocal(K.negocio, n);
+        escribirLocal(K.alias, null);
+      } catch (e) {
+        if (e.codigo === 'sin-conexion') { escribirLocal(K.unirse, codigo); throw e; }
+        estado.rechazo = traducirEquipo(e);  // entra igual, con su propia cuenta
+      }
+    }
     const nid = await asegurarNegocio();
+    await traerLugar();
     const delCelular = leerLocal(K.negocioLocal);
     const ps = await window.ALMACEN.todos();
     if (delCelular && delCelular !== nid) {
@@ -162,8 +178,39 @@ window.NUBE = (function () {
     await sincronizar();
   }
 
+  // Unirse a un negocio estando ya con la sesión abierta
+  async function unirseAhora(codigo) {
+    let n;
+    try { n = await rpc('unirse', { p_codigo: codigo }); }
+    catch (e) { throw new Error(traducirEquipo(e)); }
+    escribirLocal(K.unirse, null);
+    if (n !== leerLocal(K.negocio)) {
+      escribirLocal(K.negocio, n);
+      escribirLocal(K.alias, null);
+      escribirLocal(K.bajada, null);
+      escribirLocal(K.borrados, null);
+      const ps = await A.todos();
+      for (const p of ps) await borrarLocal(p.id);
+      escribirLocal(K.negocioLocal, n);
+      escribirLocal(K.ajustesPend, null);
+    }
+    await traerLugar();
+    await traerAjustes();
+    await sincronizar();
+    if (alCambiarProductos) alCambiarProductos();
+  }
+
   async function salir(borrarDelCelular) {
+    const eraVendedor = !esDueno();
     try { await pedir('/auth/v1/logout', { metodo: 'POST' }); } catch (e) { /* igual se cierra */ }
+    if (eraVendedor) {
+      // el nombre, el color y el logo eran del negocio del dueño: no quedan en este celular
+      const aj = leerLocal('mostrador:ajustes') || {};
+      ['negocio', 'whatsapp', 'color', 'pedidosA'].forEach((k) => { delete aj[k]; });
+      escribirLocal('mostrador:ajustes', aj);
+      escribirLocal('mostrador:logo', null);
+      if (window.MOSTRADOR_RECARGAR_AJUSTES) await window.MOSTRADOR_RECARGAR_AJUSTES();
+    }
     guardarSesion(null);
     if (borrarDelCelular) {
       const ps = await window.ALMACEN.todos();
@@ -174,9 +221,44 @@ window.NUBE = (function () {
     escribirLocal(K.bajada, null);
     escribirLocal(K.borrados, null);
     escribirLocal(K.alias, null);
+    escribirLocal(K.lugar, null);
     poner('sin-cuenta');
     if (alCambiarProductos) alCambiarProductos();
   }
+
+  async function rpc(nombre, args) {
+    return pedirConSesion('/rest/v1/rpc/' + nombre, { metodo: 'POST', json: args || {} });
+  }
+
+  function traducirEquipo(e) {
+    const m = String((e && e.message) || '');
+    if (e && e.codigo === 'sin-conexion') return 'No hay conexión a internet. Probá de nuevo.';
+    if (/invitacion-invalida/.test(m)) return 'Esta invitación ya se usó o venció. Pedile una nueva al dueño del negocio.';
+    if (/tiene-negocio/.test(m)) return 'Esta cuenta ya tiene su propio negocio con productos. Para vender en otro negocio, creá otra cuenta con otro correo.';
+    if (/limite de vendedores: (\d+)/.test(m)) return 'Llegaste al máximo de ' + /limite de vendedores: (\d+)/.exec(m)[1] + ' vendedores de tu plan. Para sumar más, hablá con Mostrador.';
+    if (/solo el due/.test(m)) return 'Esto lo puede hacer solo el dueño del negocio.';
+    return 'No se pudo completar: ' + m;
+  }
+
+  // Quién es esta persona en el negocio: dueño o vendedor, y con qué permisos
+  async function traerLugar() {
+    const l = await rpc('mi_lugar');
+    const antes = leerLocal(K.lugar);
+    if (!l) {
+      // Ya no es parte de ningún negocio (el dueño lo dio de baja)
+      if (antes && antes.rol === 'vendedor') { await salir(true); estado.rechazo = 'El dueño del negocio te dio de baja. Ya no podés ver sus productos.'; poner('sin-cuenta', estado.rechazo); throw new ErrorNube('baja', 'baja', 0); }
+      return null;
+    }
+    if (antes && antes.rol === 'vendedor' && l.negocio_id !== antes.negocio_id) {
+      await salir(true); estado.rechazo = 'El dueño del negocio te dio de baja. Ya no podés ver sus productos.'; poner('sin-cuenta', estado.rechazo); throw new ErrorNube('baja', 'baja', 0);
+    }
+    escribirLocal(K.lugar, l);
+    if (JSON.stringify(antes) !== JSON.stringify(l)) { avisarCambio(); if (antes && alCambiarProductos) alCambiarProductos(); }  // cambiaron los permisos: se redibuja
+    return l;
+  }
+  function lugar() { return sesion ? leerLocal(K.lugar) : null; }
+  function esDueno() { const l = lugar(); return !l || l.rol === 'dueno'; }
+  function puede(p) { const l = lugar(); return !sesion || !l || l.rol === 'dueno' || !!(l.permisos && l.permisos[p]); }
 
   /* ---------------- Negocio ---------------- */
   async function asegurarNegocio() {
@@ -198,7 +280,11 @@ window.NUBE = (function () {
     const d = n.datos || {};
     if (d.ajustes && !leerLocal(K.ajustesPend)) {
       const antes = leerLocal('mostrador:ajustes') || {};
-      const despues = Object.assign({}, antes, d.ajustes);
+      const CAMPOS_NEGOCIO = ['negocio', 'whatsapp', 'color', 'mostrarNegocio', 'mostrarCodigo', 'tipoNegocio', 'pedidosA'];
+      const deNegocio = {};
+      if (esDueno()) Object.assign(deNegocio, d.ajustes);
+      else CAMPOS_NEGOCIO.forEach((k) => { if (d.ajustes[k] !== undefined) deNegocio[k] = d.ajustes[k]; });
+      const despues = Object.assign({}, antes, deNegocio);
       const logoAntes = leerLocal('mostrador:logo') || null;
       const logoDespues = d.logo !== undefined ? d.logo || null : logoAntes;
       if (estable(antes) !== estable(despues) || logoAntes !== logoDespues) {
@@ -213,6 +299,7 @@ window.NUBE = (function () {
 
   async function subirAjustes() {
     if (!leerLocal(K.ajustesPend)) return;
+    if (!esDueno()) { escribirLocal(K.ajustesPend, null); return; }  // los ajustes del negocio los cambia el dueño
     const nid = leerLocal(K.negocio);
     const aj = leerLocal('mostrador:ajustes') || {};
     let logo = leerLocal('mostrador:logo');
@@ -223,14 +310,37 @@ window.NUBE = (function () {
 
   /* ---------------- Productos en el celular ---------------- */
   const A = window.ALMACEN;
-  const guardarLocal = A.guardar.bind(A);
-  const borrarLocal = A.borrar.bind(A);
+  const guardarOriginal = A.guardar.bind(A);
+  const borrarOriginal = A.borrar.bind(A);
+  const guardarLocal = (p) => { recordar(p); return guardarOriginal(p); };
+  const borrarLocal = (id) => { if (conocidos) conocidos.delete(id); return borrarOriginal(id); };
   function esEjemplo(p) { return /^ejemplo/.test(p.id); }
 
   // A partir de ahora, cada vez que la app guarda o borra, queda pendiente para subir
-  A.guardar = function (p) {
-    if (sesion && !esEjemplo(p)) { p._pendiente = true; p._cambio = Date.now(); if (!p._nube && yaSubido[p.id]) p._nube = yaSubido[p.id]; }
-    return guardarLocal(p).then((r) => { programar(); return r; });
+  // Lo que se sabe de cada producto guardado (para no perderlo si la app guarda una copia nueva)
+  let conocidos = null;
+  async function cargarConocidos() {
+    if (conocidos) return conocidos;
+    conocidos = new Map();
+    (await A.todos()).forEach((x) => conocidos.set(x.id, { _nube: x._nube, autor: x.autor }));
+    return conocidos;
+  }
+  function recordar(p) { if (conocidos) conocidos.set(p.id, { _nube: p._nube, autor: p.autor }); }
+
+  A.guardar = async function (p) {
+    if (sesion && !esEjemplo(p)) {
+      if (!p._nube || !p.autor) {
+        const prev = yaSubido[p.id] ? { _nube: yaSubido[p.id] } : (await cargarConocidos()).get(p.id);
+        if (prev) { if (!p._nube && prev._nube) p._nube = prev._nube; if (!p.autor && prev.autor) p.autor = prev.autor; }
+        if (!p.autor) { const c = conocidos && conocidos.get(p.id); if (c && c.autor) p.autor = c.autor; }
+      }
+      p._pendiente = true; p._cambio = Date.now();
+      if (!p._nube && !p.autor && sesion.user && sesion.user.id) p.autor = sesion.user.id;
+    }
+    recordar(p);
+    const r = await guardarLocal(p);
+    programar();
+    return r;
   };
   A.borrar = function (id) {
     if (sesion && !/^ejemplo/.test(id)) {
@@ -241,7 +351,7 @@ window.NUBE = (function () {
     return borrarLocal(id).then((r) => { programar(); return r; });
   };
 
-  function ajustesCambiaron() { if (sesion) { escribirLocal(K.ajustesPend, true); programar(); } }
+  function ajustesCambiaron() { if (sesion && esDueno()) { escribirLocal(K.ajustesPend, true); programar(); } }
 
   /* ---------------- Fotos ---------------- */
   function huella(src) {
@@ -356,13 +466,26 @@ window.NUBE = (function () {
       let cambiaronLocales = false;
       try {
         const nid = await asegurarNegocio();
+        const l = await traerLugar();
+        if (l && l.activo === false) { poner('error', 'Tu cuenta de Mostrador está pausada. Hablá con Mostrador para volver a activarla.'); return; }
         await subirAjustes();
         await traerAjustes();
+        const rechazos = [];
+        const rechazado = (e) => e && (e.status === 403 || e.codigo === '42501');
 
         // 1. Borrados
         const borrados = leerLocal(K.borrados) || [];
         for (const id of borrados.slice()) {
-          await pedirConSesion('/rest/v1/productos?negocio_id=eq.' + nid + '&id=eq.' + encodeURIComponent(id), { metodo: 'PATCH', json: { borrado: true, datos: {} }, cabeceras: { Prefer: 'return=minimal' } });
+          try {
+            await pedirConSesion('/rest/v1/productos?negocio_id=eq.' + nid + '&id=eq.' + encodeURIComponent(id), { metodo: 'PATCH', json: { borrado: true }, cabeceras: { Prefer: 'return=minimal' } });
+          } catch (e) {
+            if (!rechazado(e)) throw e;
+            // no tiene permiso para eliminar: el producto vuelve
+            escribirLocal(K.borrados, (leerLocal(K.borrados) || []).filter((x) => x !== id));
+            escribirLocal(K.bajada, null);
+            rechazos.push('eliminar');
+            continue;
+          }
           const lista = await pedirConSesion('/storage/v1/object/list/fotos', { metodo: 'POST', json: { prefix: nid + '/' + id + '/', limit: 100 } }).catch(() => []);
           await borrarFotos((lista || []).map((o) => nid + '/' + id + '/' + o.name));
           const resto = (leerLocal(K.borrados) || []).filter((x) => x !== id);
@@ -385,7 +508,20 @@ window.NUBE = (function () {
           p.fotos = fotos;
           const nube = { foto: await subirFoto(nid, p.id, p.foto, viejo.foto), recorte: await subirFoto(nid, p.id, p.recorte, viejo.recorte), mini: await subirMini(nid, p.id, p.foto, viejo.mini), fotos: [] };
           for (const f of fotos) { const k = huella(srcDe(f)); nube.fotos.push(await subirFoto(nid, p.id, srcDe(f), (viejo.fotos || []).find((x) => x && x.k === k))); }
-          await pedirConSesion('/rest/v1/productos?on_conflict=negocio_id,id', { metodo: 'POST', json: [{ id: p.id, negocio_id: nid, datos: datosDe(p, nube), borrado: false }], cabeceras: { Prefer: 'resolution=merge-duplicates,return=minimal' } });
+          const yaEstaba = !!(viejo.foto && viejo.foto.path);
+          try {
+            if (yaEstaba) await pedirConSesion('/rest/v1/productos?negocio_id=eq.' + nid + '&id=eq.' + encodeURIComponent(p.id), { metodo: 'PATCH', json: { datos: datosDe(p, nube) }, cabeceras: { Prefer: 'return=minimal' } });
+            else await pedirConSesion('/rest/v1/productos?on_conflict=negocio_id,id', { metodo: 'POST', json: [{ id: p.id, negocio_id: nid, datos: datosDe(p, nube), borrado: false }], cabeceras: { Prefer: 'resolution=merge-duplicates,return=minimal' } });
+          } catch (e) {
+            if (!rechazado(e)) throw e;
+            // Sin permiso: lo nuevo se saca del celular; lo cambiado vuelve a como está en internet
+            await borrarFotos(caminos(nube).filter((x) => caminos(viejo).indexOf(x) < 0));
+            if (yaEstaba) { const act = (await A.todos()).find((x) => x.id === p.id); if (act) { act._pendiente = false; await guardarLocal(act); } escribirLocal(K.bajada, null); rechazos.push('editar'); }
+            else { await borrarLocal(p.id); rechazos.push('cargar'); }
+            cambiaronLocales = true;
+            hechos++;
+            continue;
+          }
           yaSubido[p.id] = nube;
           // fotos que ya no se usan
           const usadas = caminos(nube);
@@ -401,6 +537,12 @@ window.NUBE = (function () {
           estado.pendientes = pend.length - hechos;
         }
 
+        if (rechazos.length) {
+          estado.rechazo = rechazos.indexOf('cargar') >= 0 ? 'No tenés permiso para cargar productos nuevos. Pedíselo al dueño del negocio.'
+            : rechazos.indexOf('editar') >= 0 ? 'No tenés permiso para cambiar ese producto. Quedó como estaba.'
+              : 'No tenés permiso para eliminar productos. El producto volvió.';
+          avisarCambio();
+        }
         // 3. Bajar lo que cambió en otros celulares
         poner('sincronizando', 'Buscando cambios…');
         const desde = leerLocal(K.bajada);
@@ -444,7 +586,7 @@ window.NUBE = (function () {
         poner(estado.pendientes ? 'sincronizando' : 'al-dia', estado.pendientes ? 'Quedan cambios por subir' : '');
         if (estado.pendientes) otraVez = true;
       } catch (e) {
-        if (!sesion) { poner('sin-cuenta', estado.mensaje); }
+        if (!sesion || e.codigo === 'baja') { poner('sin-cuenta', estado.mensaje); }
         else if (e.codigo === 'sin-conexion') poner('sin-conexion', 'Sin internet: se guarda cuando vuelva la conexión.');
         else if (e.status === 401 || e.status === 403) poner('error', 'Tu cuenta no tiene permiso. Si te dieron de baja, hablá con Mostrador.');
         else poner('error', 'No se pudo guardar en internet: ' + e.message);
@@ -486,13 +628,16 @@ window.NUBE = (function () {
       catch (e) { throw new Error(e.codigo === 'sin-conexion' ? 'No hay conexión a internet. Probá de nuevo.' : 'No se pudo armar el link: ' + e.message); }
       escribirLocal(K.alias, alias);
     }
-    return linkDe(alias);
+    const l = lugar();
+    return linkDe(alias) + (l && l.rol === 'vendedor' && l.codigo ? '&v=' + l.codigo : '');
   }
 
   // Lo que ve el cliente (no hace falta cuenta)
-  async function catalogoPublico(alias) {
+  async function catalogoPublico(alias, vendedor) {
     let r;
-    try { r = await pedir('/rest/v1/rpc/catalogo_publico', { metodo: 'POST', json: { p_alias: alias }, conSesion: false }); }
+    const args = { p_alias: alias };
+    if (vendedor) args.p_vendedor = vendedor;
+    try { r = await pedir('/rest/v1/rpc/catalogo_publico', { metodo: 'POST', json: args, conSesion: false }); }
     catch (e) { if (e.codigo === 'sin-conexion') throw new Error('sin-conexion'); throw e; }
     if (!r || !r.negocio) return null;
     const productos = (r.productos || []).map((x) => {
@@ -507,8 +652,34 @@ window.NUBE = (function () {
     return { negocio: r.negocio, productos: productos };
   }
 
+  /* ---------------- Equipo (vendedores) ---------------- */
+  function linkInvitacion(codigo) { return location.origin + location.pathname.replace(/index\.html$/, '') + '?unirse=' + encodeURIComponent(codigo); }
+  async function llamar(nombre, args) {
+    try { return await rpc(nombre, args); } catch (e) { throw new Error(traducirEquipo(e)); }
+  }
+  const equipo = {
+    ver: () => llamar('equipo'),
+    async invitar(nombre, permisos) { return linkInvitacion(await llamar('crear_invitacion', { p_nombre: nombre, p_permisos: permisos })); },
+    link: linkInvitacion,
+    permisos: (usuario, permisos) => llamar('cambiar_permisos', { p_usuario: usuario, p_permisos: permisos }),
+    quitar: (usuario) => llamar('quitar_vendedor', { p_usuario: usuario }),
+    cancelar: (codigo) => llamar('cancelar_invitacion', { p_codigo: codigo }),
+    async misDatos(nombre, whatsapp) { await llamar('mis_datos', { p_nombre: nombre, p_whatsapp: whatsapp }); await traerLugar(); },
+    async verInvitacion(codigo) {
+      try { return await pedir('/rest/v1/rpc/ver_invitacion', { metodo: 'POST', json: { p_codigo: codigo }, conSesion: false }); }
+      catch (e) { if (e.codigo === 'sin-conexion') throw new Error('No hay conexión a internet.'); return null; }
+    },
+    guardarInvitacion(codigo) { escribirLocal(K.unirse, codigo); },
+    get invitacionPendiente() { return leerLocal(K.unirse); },
+    unirse: unirseAhora
+  };
+
   return {
     get sesion() { return sesion; },
+    get lugar() { return lugar(); },
+    esDueno: esDueno,
+    puede: puede,
+    equipo: equipo,
     linkCatalogo: linkCatalogo,
     catalogoPublico: catalogoPublico,
     apagar() { apagado = true; clearTimeout(timer); },

@@ -52,6 +52,14 @@
     return [a.financiacion ? 'Financiación' : '', a.permuta ? 'Acepta permuta' : ''].filter(Boolean);
   }
   function incompleto(p) { return !String(p.nombre || '').trim() || !(Number(p.precio) > 0); }
+  // Permisos (con cuenta de vendedor): el dueño decide qué puede hacer cada uno
+  function puede(x) { return !window.NUBE || NUBE.puede(x); }
+  function puedeEditar(p) {
+    if (!window.NUBE || NUBE.puede('editar')) return true;
+    if (!NUBE.puede('cargar')) return false;
+    return !p || !p.id || !p._nube || p.autor === (NUBE.sesion && NUBE.sesion.user && NUBE.sesion.user.id);
+  }
+  function esVendedor() { return !!(window.NUBE && NUBE.sesion && !NUBE.esDueno()); }
   function cantidadFotos(p) { return 1 + ((p.fotos && p.fotos.length) || 0); }
   // Total del pedido separado por moneda: "$ 25.000 + US$ 1.200"
   function totalTexto(lineas) {
@@ -145,7 +153,10 @@
   }
 
   // Si la app se abre con ?c=alias, es un cliente mirando el catálogo de un negocio
-  const ALIAS_PUBLICO = new URLSearchParams(location.search).get('c');
+  const PARAMS = new URLSearchParams(location.search);
+  const ALIAS_PUBLICO = PARAMS.get('c');
+  const VENDEDOR_PUBLICO = PARAMS.get('v');
+  const INVITACION = PARAMS.get('unirse');
 
   const estado = {
     publico: null,
@@ -177,7 +188,7 @@
   /* ---------------- Navegación ---------------- */
   function vistaActual() {
     const h = location.hash.replace(/^#/, '');
-    return ['editor', 'catalogo', 'ajustes', 'precios', 'completar'].indexOf(h) >= 0 ? h : 'inicio';
+    return ['editor', 'catalogo', 'ajustes', 'precios', 'completar', 'equipo'].indexOf(h) >= 0 ? h : 'inicio';
   }
 
   function navegar() {
@@ -187,11 +198,13 @@
     if (!ajustes.tipoNegocio && vistaActual() === 'inicio') setTimeout(() => { if (!estado.capa && !ajustes.tipoNegocio) abrirCapa({ tipo: 'negocio' }); }, 300);
     let v = vistaActual();
     if (v === 'editor' && !estado.editor) { location.replace('#inicio'); v = 'inicio'; }
+    if ((v === 'precios' && !puede('editar') && !puede('precios')) || (v === 'equipo' && esVendedor())) { location.replace('#inicio'); v = 'inicio'; }
     document.body.dataset.vista = v;
     if (v === 'editor') { app.innerHTML = vistaEditor(); prepararEditor(); }
     else if (v === 'catalogo') app.innerHTML = vistaCatalogo();
     else if (v === 'ajustes') app.innerHTML = vistaAjustes();
     else if (v === 'precios') app.innerHTML = vistaPrecios();
+    else if (v === 'equipo') { app.innerHTML = vistaEquipo(); cargarEquipo(); }
     else if (v === 'completar') {
       app.innerHTML = vistaCompletar();
       const id = estado.filaCompletar;
@@ -297,18 +310,19 @@
       '<section class="camara">' +
       '<div class="camara-textos"><p class="negocio-nombre">' + esc(ajustes.negocio) + '</p>' +
       '<h1>Sacá la foto, poné el precio y compartila</h1></div>' +
+      (!puede('cargar') ? '<p class="nota sin-permiso">El dueño del negocio no te dio permiso para cargar productos nuevos. Podés compartir los que ya están.</p>' :
       '<div class="camara-botones"><label class="btn-camara" for="foto-camara"><span class="icono-camara" aria-hidden="true"></span>Sacar foto</label>' +
       '<input class="oculto" id="foto-camara" type="file" accept="image/*" capture="environment" data-accion="foto">' +
       '<label class="btn btn-galeria" for="foto-galeria">Elegir de la galería</label>' +
       '<input class="oculto" id="foto-galeria" type="file" accept="image/*" multiple data-accion="foto"></div>' +
       '<label class="btn-muchos" for="carga-rapida"><b>¿Ya tenés las fotos?</b> Cargá muchos productos juntos →</label>' +
-      '<input class="oculto" id="carga-rapida" type="file" accept="image/*" multiple data-accion="carga-rapida">' +
+      '<input class="oculto" id="carga-rapida" type="file" accept="image/*" multiple data-accion="carga-rapida">') +
       '</section>' +
       bannerCuenta() +
       (ps.some(incompleto) ? '<a class="aviso-completar" href="#completar"><b>' + ps.filter(incompleto).length + '</b> ' + (ps.filter(incompleto).length === 1 ? 'producto sin nombre o precio' : 'productos sin nombre o precio') + '<span>Completar →</span></a>' : '') +
       '<section class="seccion">' +
       '<div class="fila"><h2>Tus productos <small>' + (ps.length || '') + '</small></h2>' +
-      '<div class="accesos">' + (ps.length ? '<a class="acceso" href="#precios">Precios</a>' : '') + '<a class="acceso" href="#catalogo">Ver catálogo</a></div></div>' +
+      '<div class="accesos">' + (ps.length && (puede('editar') || puede('precios')) ? '<a class="acceso" href="#precios">Precios</a>' : '') + '<a class="acceso" href="#catalogo">Ver catálogo</a></div></div>' +
       grilla + '</section>' +
       (ALMACEN.soloMemoria ? '<p class="nota">Este navegador no deja guardar: tus fotos se borran al cerrar la página.</p>' : '') +
       '</main>';
@@ -384,8 +398,8 @@
       '<header class="ed-top"><a class="ed-volver" href="#' + (estado.volverA || 'inicio') + '" data-accion="salir-editor" aria-label="Volver"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>' +
       '<span></span>' +
       '<button class="ed-descargar" data-accion="descargar-editor" aria-label="Guardar las fotos en el celular" title="Guardar las fotos en el celular"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg></button>' +
-      '<button class="btn ed-guardar" data-accion="guardar">Guardar</button>' +
-      '<button class="btn btn-marca ed-compartir" data-accion="compartir">Compartir</button></header>' +
+      (puedeEditar(estado.productos.find((x) => x.id === e.id) || { id: e.id }) ? '<button class="btn ed-guardar" data-accion="guardar">Guardar</button>' : '<span></span>') +
+      (puede('compartir') ? '<button class="btn btn-marca ed-compartir" data-accion="compartir">Compartir</button>' : '<span></span>') + '</header>' +
       '<div class="ed-escena" id="ed-escena">' +
       '<div class="ed-foto"><div class="vista-previa" style="' + proporcion(e) + '"><canvas id="lienzo" aria-label="Vista previa. Tocá el precio o el nombre para cambiarlos; arrastralos para moverlos."></canvas>' +
       '<span class="trabajando-aviso" aria-live="polite">Recortando el producto…<small>La primera vez puede tardar unos segundos</small></span>' +
@@ -897,6 +911,7 @@
       fotos: (e.fotos || []).map((f) => ({ src: fotoSrc(f), diseno: f.diseno !== false })), moneda: e.moneda === 'USD' ? 'USD' : 'ARS',
       auto: rubroEditor() === 'vehiculos' ? Object.assign({}, e.auto || {}) : (e.auto || {})
     };
+    if (!puedeEditar(estado.productos.find((x) => x.id === p.id) || { id: e.id })) { e.firma = firmaEditor(e); return p; }  // sin permiso: solo se usa para compartir
     await ALMACEN.guardar(p);
     e.id = p.id; e.fecha = p.fecha; e.firma = firmaEditor(e);
     ajustes.estilo = e.estilo; ajustes.fondo = e.fondo; ajustes.letra = e.letra; guardarAjustes();
@@ -1041,11 +1056,11 @@
       titulo = pr.nombre || 'Producto';
       cuerpo = '<div class="confirmar-borrar"><img src="' + pr.foto + '" alt=""><div><b>' + esc(pr.nombre || 'Sin nombre') + '</b><span>' + esc(precioDe(pr)) + '</span></div></div>' +
         '<div class="lista-opciones">' +
-        '<button class="opcion" data-accion="abrir" data-id="' + esc(pr.id) + '">Editar</button>' +
-        '<button class="opcion" data-accion="opcion-compartir" data-id="' + esc(pr.id) + '">Compartir</button>' +
-        '<button class="opcion" data-accion="opcion-descargar" data-id="' + esc(pr.id) + '">Guardar las fotos en el celular</button>' +
-        '<button class="opcion" data-accion="duplicar" data-id="' + esc(pr.id) + '">Duplicar (para uno parecido)</button>' +
-        '<button class="opcion peligro" data-accion="pedir-borrar" data-id="' + esc(pr.id) + '">' + ICONO_TACHO + ' Eliminar</button></div>';
+        '<button class="opcion" data-accion="abrir" data-id="' + esc(pr.id) + '">' + (puedeEditar(pr) ? 'Editar' : 'Ver el diseño') + '</button>' +
+        (puede('compartir') ? '<button class="opcion" data-accion="opcion-compartir" data-id="' + esc(pr.id) + '">Compartir</button>' +
+          '<button class="opcion" data-accion="opcion-descargar" data-id="' + esc(pr.id) + '">Guardar las fotos en el celular</button>' : '') +
+        (puede('cargar') ? '<button class="opcion" data-accion="duplicar" data-id="' + esc(pr.id) + '">Duplicar (para uno parecido)</button>' : '') +
+        (puede('eliminar') ? '<button class="opcion peligro" data-accion="pedir-borrar" data-id="' + esc(pr.id) + '">' + ICONO_TACHO + ' Eliminar</button>' : '') + '</div>';
       pie = '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Cancelar</button>';
     }
     else if (c.tipo === 'negocio') {
@@ -1055,6 +1070,9 @@
         '<div class="tipos-negocio">' + op.map((o) => '<button class="tipo-negocio" data-accion="elegir-negocio" data-tipo="' + o[0] + '"' + (ajustes.tipoNegocio === o[0] ? ' aria-pressed="true"' : '') + '><b>' + o[1] + '</b><span>' + o[2] + '</span></button>').join('') + '</div>';
       pie = '';
     }
+    else if (c.tipo === 'invitar') { const h = hojaInvitar(c); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
+    else if (c.tipo === 'permisos') { const h = hojaPermisos(c); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
+    else if (c.tipo === 'unirse') { const h = hojaUnirse(c); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
     else if (c.tipo === 'link') { const h = hojaLink(c); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
     else if (c.tipo === 'cuenta') { const h = hojaCuenta(c); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
     else if (c.tipo === 'salir') {
@@ -1281,7 +1299,7 @@
     const total = totalTexto(lineas);
     const c = estado.capa;
     const texto = '*Pedido para ' + ajustes.negocio + '*\n\n' + lineas.map((l) => '• ' + l.n + ' x ' + l.p.nombre + ' (' + precioDe(l.p) + ') = ' + S.precioTexto(l.p.precio * l.n, l.p.moneda)).join('\n') +
-      '\n\n*Total: ' + total + '*' + (c.nombre ? '\nA nombre de: ' + c.nombre : '');
+      '\n\n*Total: ' + total + '*' + (c.nombre ? '\nA nombre de: ' + c.nombre : '') + (estado.publico && estado.publico.vendedor ? '\nVendedor: ' + estado.publico.vendedor : '');
     const link = 'https://wa.me/' + (ajustes.whatsapp || '') + '?text=' + encodeURIComponent(texto);
     return ['Tu pedido',
       '<div class="lineas">' + lineas.map((l) => '<div class="linea"><span>' + l.n + ' × ' + esc(l.p.nombre) + '</span><b>' + esc(S.precioTexto(l.p.precio * l.n, l.p.moneda)) + '</b></div>').join('') +
@@ -1336,14 +1354,14 @@
         '<div class="fila-completar' + (incompleto(p) ? ' falta-fila' : '') + '" data-fila="' + esc(p.id) + '">' +
         '<div class="fc-foto"><img src="' + p.foto + '" alt="">' + (cantidadFotos(p) > 1 ? '<span class="fotos-chip">' + ICONO_FOTOS + cantidadFotos(p) + '</span>' : '') + '</div>' +
         '<div class="fc-campos">' +
-        '<input data-completar="nombre" data-id="' + esc(p.id) + '" value="' + esc(p.nombre || '') + '" placeholder="Nombre del producto" aria-label="Nombre" autocomplete="off" enterkeyhint="next">' +
-        '<div class="con-signo"><span>$</span><input data-completar="precio" data-id="' + esc(p.id) + '" inputmode="numeric" value="' + (Number(p.precio) > 0 ? esc(Number(p.precio).toLocaleString('es-AR')) : '') + '" placeholder="Precio" aria-label="Precio" autocomplete="off" enterkeyhint="next"></div>' +
+        '<input data-completar="nombre"' + (puedeEditar(p) ? '' : ' disabled') + ' data-id="' + esc(p.id) + '" value="' + esc(p.nombre || '') + '" placeholder="Nombre del producto" aria-label="Nombre" autocomplete="off" enterkeyhint="next">' +
+        '<div class="con-signo"><span>$</span><input data-completar="precio"' + (puedeEditar(p) ? '' : ' disabled') + ' data-id="' + esc(p.id) + '" inputmode="numeric" value="' + (Number(p.precio) > 0 ? esc(Number(p.precio).toLocaleString('es-AR')) : '') + '" placeholder="Precio" aria-label="Precio" autocomplete="off" enterkeyhint="next"></div>' +
         '<span class="fc-rubro" id="rubro-' + esc(p.id) + '">' + (p.nombre ? esc(RUBROS.nombreDe(rubroDe(p))) : '') + '</span>' +
         '</div>' +
         '<div class="fc-acciones">' + (i > 0 ? '<button class="btn-texto" data-accion="unir" data-id="' + esc(p.id) + '" data-con="' + esc(ps[i - 1].id) + '">Unir con el de arriba</button>' : '') +
         '<button class="btn-texto" data-accion="abrir" data-id="' + esc(p.id) + '">Editar diseño</button></div>' +
         '</div>').join('') + '</div>' : '<p class="vacio">No hay productos para completar.</p>') +
-      '<label class="btn btn-claro btn-ancho" for="carga-rapida-2">+ Cargar más fotos</label>' +
+      (puede('cargar') ? '<label class="btn btn-claro btn-ancho" for="carga-rapida-2">+ Cargar más fotos</label>' : '') +
       '<input class="oculto" id="carga-rapida-2" type="file" accept="image/*" multiple data-accion="carga-rapida">' +
       '<a class="btn btn-marca btn-ancho" href="#inicio">Listo</a>' +
       '</main>';
@@ -1403,7 +1421,7 @@
     const rubros = Object.keys(cuenta).sort((a, b) => RUBROS.nombreDe(a).localeCompare(RUBROS.nombreDe(b), 'es'));
     if (aumento.rubro !== 'todos' && !cuenta[aumento.rubro]) aumento.rubro = 'todos';
     return '<header class="barra-top"><a class="btn-texto" href="#inicio">← Volver</a><b>Precios</b><span></span></header>' +
-      '<main class="pagina precios">' +
+      '<main class="pagina precios">' + (!puede('precios') ? '' :
       '<section class="caja aumento"><h2>Subir o bajar por porcentaje</h2>' +
       '<div class="segmentos" role="group" aria-label="Subir o bajar">' +
       '<button data-accion="sentido" data-s="1" aria-pressed="' + (aumento.sentido === 1) + '">Subir</button>' +
@@ -1418,11 +1436,11 @@
       '<p class="detalle" id="ejemplo-redondeo">' + ejemploRedondeo() + '</p>' +
       '<div id="vista-aumento">' + vistaAumento() + '</div>' +
       '</section>' +
-      ultimoCambioHtml() +
+      ultimoCambioHtml()) +
       '<section class="caja"><h2>Precio de cada producto</h2><p class="detalle">Escribí el precio nuevo. Se guarda solo.</p>' +
       '<div class="lista-precios">' + estado.productos.map((p) =>
         '<div class="fila-precio"><img src="' + p.foto + '" alt=""><div class="fp-datos"><b>' + esc(p.nombre) + '</b><span>' + esc(RUBROS.nombreDe(rubroDe(p))) + '</span></div>' +
-        '<div class="con-signo"><span>$</span><input data-precio-de="' + esc(p.id) + '" inputmode="numeric" aria-label="' + esc('Precio de ' + p.nombre) + '" value="' + esc(Number(p.precio).toLocaleString('es-AR')) + '" autocomplete="off"></div></div>').join('') +
+        '<div class="con-signo"><span>$</span><input data-precio-de="' + esc(p.id) + '"' + (puedeEditar(p) ? '' : ' disabled') + ' inputmode="numeric" aria-label="' + esc('Precio de ' + p.nombre) + '" value="' + esc(Number(p.precio).toLocaleString('es-AR')) + '" autocomplete="off"></div></div>').join('') +
       '</div></section>' +
       '</main>';
   }
@@ -1514,9 +1532,11 @@
 
   /* ================= Ajustes ================= */
   function vistaAjustes() {
+    if (esVendedor()) return vistaAjustesVendedor();
     return '<header class="barra-top"><a class="btn-texto" href="#inicio">← Volver</a><b>Ajustes</b><span></span></header>' +
       '<main class="pagina ajustes">' +
       '<div id="caja-cuenta">' + cajaCuenta() + '</div>' +
+      (window.NUBE && NUBE.sesion ? '<a class="caja caja-equipo" href="#equipo"><b>Tus vendedores</b><span>Invitá a tu equipo y elegí qué puede hacer cada uno</span><i>→</i></a>' : '') +
       '<div class="campo"><label for="a-tipo">¿Qué vendés?</label><select id="a-tipo" data-ajuste="tipoNegocio">' +
       [['productos', 'Productos'], ['vehiculos', 'Autos y motos'], ['ambos', 'Las dos cosas']].map((o) => '<option value="' + o[0] + '"' + ((ajustes.tipoNegocio || 'productos') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') +
       '</select><span class="nota">Con "Productos", un auto o una moto se toma como juguete.</span></div>' +
@@ -1575,6 +1595,7 @@
     const t = NUBE_TEXTOS[e.fase] || NUBE_TEXTOS['al-dia'];
     return '<section class="caja caja-cuenta"><h2>Tu cuenta</h2>' +
       '<p class="cuenta-correo">' + esc(NUBE.email || 'Cuenta conectada') + '</p>' +
+      (esVendedor() ? '<p class="cuenta-rol">Vendedor de <b>' + esc(ajustes.negocio) + '</b></p>' : '') +
       '<p class="estado-nube nube-' + e.fase + '">' + ICONO_NUBE + '<span>' + esc(e.mensaje || t[1]) + '</span></p>' +
       (e.ultima ? '<p class="nota">Última vez: ' + new Date(e.ultima).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + '</p>' : '') +
       '<button class="btn btn-marca btn-ancho btn-link-catalogo" data-accion="compartir-link">Link de tu catálogo para tus clientes</button>' +
@@ -1683,11 +1704,13 @@
     else if (v === 'catalogo') app.innerHTML = vistaCatalogo();
     else if (v === 'completar') app.innerHTML = vistaCompletar();
     else if (v === 'ajustes') app.innerHTML = vistaAjustes();
+    else if (v === 'equipo') { if (esVendedor()) location.hash = 'inicio'; else cargarEquipo(); }
     window.scrollTo(0, y);
   }
 
   // Solo el cartelito de estado (sin redibujar la pantalla)
   function refrescarNube() {
+    if (window.NUBE && NUBE.estado.rechazo) { const m = NUBE.estado.rechazo; NUBE.estado.rechazo = ''; setTimeout(() => avisar(m), 300); }
     const ind = document.getElementById('nube-ind');
     if (ind) ind.outerHTML = indicadorNube();
     const caja = document.getElementById('caja-cuenta');
@@ -1747,6 +1770,179 @@
     if (estado.capa === datos) renderCapa(false);
   }
 
+  /* ================= Equipo: vendedores y permisos ================= */
+  const PERMISOS = [
+    ['cargar', 'Cargar productos', 'Sacar fotos y crear productos nuevos'],
+    ['editar', 'Editar productos', 'Cambiar nombre, precio, fotos y diseño de cualquier producto'],
+    ['compartir', 'Compartir', 'Publicar y guardar las fotos en el celular'],
+    ['eliminar', 'Eliminar productos', 'Borrar productos del catálogo'],
+    ['precios', 'Subir precios a todos', 'Aumentar o bajar por porcentaje muchos productos juntos']
+  ];
+  const PLANTILLAS = {
+    vendedor: { nombre: 'Vendedor', detalle: 'Carga, edita y comparte. No puede eliminar ni subir precios a todos.', permisos: { cargar: true, editar: true, compartir: true, eliminar: false, precios: false } },
+    encargado: { nombre: 'Encargado', detalle: 'Puede todo, menos cambiar los datos del negocio e invitar gente.', permisos: { cargar: true, editar: true, compartir: true, eliminar: true, precios: true } }
+  };
+  estado.equipo = null;
+
+  function resumenPermisos(p) {
+    const si = PERMISOS.filter((x) => p && p[x[0]]).map((x) => x[1].toLowerCase());
+    return si.length ? si.join(', ') : 'solo ver los productos';
+  }
+
+  function vistaEquipo() {
+    const eq = estado.equipo;
+    const pedidosA = ajustes.pedidosA === 'vendedor' ? 'vendedor' : 'negocio';
+    let lista = '<p class="detalle">Cargando tu equipo…</p>';
+    if (eq && eq.error) lista = '<p class="error-cuenta">' + esc(eq.error) + '</p><button class="btn btn-chico" data-accion="reintentar-equipo">Probar de nuevo</button>';
+    else if (eq) {
+      const vend = eq.miembros.filter((m) => m.rol === 'vendedor');
+      lista = '<div class="lista-equipo">' +
+        eq.miembros.filter((m) => m.rol === 'dueno').map((m) => '<div class="miembro"><div><b>Vos (dueño)</b><span>' + esc(m.email || '') + '</span></div></div>').join('') +
+        vend.map((m) => '<button class="miembro" data-accion="ver-permisos" data-u="' + esc(m.usuario) + '"><div><b>' + esc(m.nombre || m.email || 'Vendedor') + '</b><span>' + esc(m.email || '') + (m.whatsapp ? ' · WhatsApp ' + esc(m.whatsapp) : ' · sin WhatsApp') + '</span>' +
+          '<small>Puede: ' + esc(resumenPermisos(m.permisos)) + '</small></div><i>Permisos →</i></button>').join('') +
+        eq.invitaciones.map((i) => '<div class="miembro pendiente"><div><b>' + esc(i.nombre || 'Invitación') + '</b><span>Invitación sin usar · vence el ' + new Date(i.vence).toLocaleDateString('es-AR') + '</span></div>' +
+          '<button class="btn-texto peligro" data-accion="cancelar-invitacion" data-c="' + esc(i.codigo) + '">Cancelar</button></div>').join('') +
+        '</div>' +
+        (!vend.length && !eq.invitaciones.length ? '<p class="detalle">Todavía no invitaste a nadie.</p>' : '') +
+        '<p class="nota">Tu plan permite hasta ' + eq.limite + ' vendedores (usados: ' + (vend.length + eq.invitaciones.length) + ').</p>';
+    }
+    return '<header class="barra-top"><a class="btn-texto" href="#ajustes">← Ajustes</a><b>Tus vendedores</b><span></span></header>' +
+      '<main class="pagina ajustes">' +
+      '<section class="caja"><h2>Tu equipo</h2>' +
+      '<p class="detalle">Cada vendedor entra con su propio correo. Todos ven los mismos productos: si uno saca la foto, los demás ya la tienen.</p>' +
+      '<div id="lista-equipo">' + lista + '</div>' +
+      '<button class="btn btn-marca btn-ancho" data-accion="invitar">+ Invitar un vendedor</button></section>' +
+      '<section class="caja"><h2>¿A quién le llegan los pedidos?</h2>' +
+      '<select id="pedidos-a" aria-label="A quién le llegan los pedidos">' +
+      '<option value="negocio"' + (pedidosA === 'negocio' ? ' selected' : '') + '>Al WhatsApp del negocio</option>' +
+      '<option value="vendedor"' + (pedidosA === 'vendedor' ? ' selected' : '') + '>Al WhatsApp de cada vendedor</option></select>' +
+      '<p class="nota">Con "cada vendedor", cada uno tiene su propio link del catálogo y los pedidos de ese link le llegan a él. Si un vendedor no cargó su WhatsApp, llegan al del negocio.</p></section>' +
+      '</main>';
+  }
+
+  async function cargarEquipo() {
+    try { estado.equipo = await NUBE.equipo.ver(); } catch (e) { estado.equipo = { error: e.message }; }
+    if (vistaActual() === 'equipo') { const y = window.scrollY; app.innerHTML = vistaEquipo(); window.scrollTo(0, y); }
+  }
+
+  function interruptoresPermisos(p, deshabilitado) {
+    return '<div class="permisos">' + PERMISOS.map((x) => '<label class="interruptor permiso"><input type="checkbox" data-permiso="' + x[0] + '"' + (p[x[0]] ? ' checked' : '') + (deshabilitado ? ' disabled' : '') + '><span><b>' + x[1] + '</b><small>' + x[2] + '</small></span></label>').join('') + '</div>';
+  }
+
+  function hojaInvitar(c) {
+    if (c.link) {
+      const wa = 'https://wa.me/?text=' + encodeURIComponent('Hola' + (c.nombre ? ' ' + c.nombre : '') + ', te invito a vender con ' + ajustes.negocio + ' en Mostrador. Entrá a este link y creá tu cuenta: ' + c.link);
+      return ['Invitación lista',
+        '<p class="detalle">Mandale este link a <b>' + esc(c.nombre || 'tu vendedor') + '</b>. Lo abre en su celular, crea su cuenta con su correo y ya ve todos los productos. El link sirve para una sola persona y vence en 7 días.</p>' +
+        '<div class="caja-link"><input id="link-invitacion" readonly value="' + esc(c.link) + '" aria-label="Link de invitación"><button class="btn btn-chico" data-accion="copiar-invitacion">Copiar</button></div>',
+        '<a class="btn btn-wa btn-ancho btn-con-icono" href="' + esc(wa) + '" target="_blank" rel="noopener">' + ICONO_WA + 'Enviar por WhatsApp</a>' +
+        '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Listo</button>'];
+    }
+    return ['Invitar un vendedor',
+      '<div class="campo"><label for="inv-nombre">Nombre del vendedor</label><input id="inv-nombre" value="' + esc(c.nombre || '') + '" placeholder="Ej: Juan" autocomplete="off"></div>' +
+      '<span class="rotulo">¿Qué va a poder hacer?</span>' +
+      '<div class="tipos-negocio">' + Object.keys(PLANTILLAS).map((k) => '<button class="tipo-negocio" data-accion="plantilla" data-p="' + k + '" aria-pressed="' + (c.plantilla === k) + '"><b>' + PLANTILLAS[k].nombre + '</b><span>' + PLANTILLAS[k].detalle + '</span></button>').join('') + '</div>' +
+      '<p class="nota">Después le podés cambiar cada permiso cuando quieras.</p>' + (c.error ? '<p class="error-cuenta">' + esc(c.error) + '</p>' : ''),
+      '<button class="btn btn-marca btn-ancho" data-accion="crear-invitacion"' + (c.ocupado ? ' disabled' : '') + '>' + (c.ocupado ? 'Creando…' : 'Crear invitación') + '</button>'];
+  }
+
+  async function crearInvitacion() {
+    const c = estado.capa;
+    const n = document.getElementById('inv-nombre');
+    c.nombre = n ? n.value.trim() : c.nombre;
+    if (!c.nombre) { c.error = 'Escribí el nombre del vendedor.'; renderCapa(false); return; }
+    c.error = ''; c.ocupado = true; renderCapa(false);
+    try { c.link = await NUBE.equipo.invitar(c.nombre, (PLANTILLAS[c.plantilla] || PLANTILLAS.vendedor).permisos); }
+    catch (e) { c.error = e.message; }
+    c.ocupado = false;
+    if (estado.capa === c) renderCapa(false);
+    cargarEquipo();
+  }
+
+  function hojaPermisos(c) {
+    const m = c.miembro;
+    if (c.confirmar) {
+      return ['¿Dar de baja a ' + (m.nombre || m.email) + '?',
+        '<p class="detalle">Deja de ver los productos del negocio y se le borran de su celular. Los productos que cargó quedan en tu catálogo.</p>' + (c.error ? '<p class="error-cuenta">' + esc(c.error) + '</p>' : ''),
+        '<button class="btn btn-peligro-lleno btn-ancho" data-accion="quitar-vendedor">Sí, dar de baja</button><button class="btn btn-claro btn-ancho" data-accion="cerrar">Cancelar</button>'];
+    }
+    return [m.nombre || m.email || 'Vendedor',
+      '<p class="detalle">' + esc(m.email || '') + '</p>' + interruptoresPermisos(c.permisos, false) +
+      '<p class="nota">Cambiar los datos del negocio e invitar vendedores lo podés hacer solo vos.</p>' + (c.error ? '<p class="error-cuenta">' + esc(c.error) + '</p>' : ''),
+      '<button class="btn btn-marca btn-ancho" data-accion="guardar-permisos">Guardar permisos</button>' +
+      '<button class="btn-texto peligro" data-accion="pedir-quitar">Dar de baja a este vendedor</button>'];
+  }
+
+  async function guardarPermisos() {
+    const c = estado.capa;
+    try { await NUBE.equipo.permisos(c.miembro.usuario, c.permisos); cerrarCapa(); avisar('Permisos guardados'); cargarEquipo(); }
+    catch (e) { c.error = e.message; renderCapa(false); }
+  }
+  async function quitarVendedor() {
+    const c = estado.capa;
+    try { await NUBE.equipo.quitar(c.miembro.usuario); cerrarCapa(); avisar('Vendedor dado de baja'); cargarEquipo(); }
+    catch (e) { c.error = e.message; renderCapa(false); }
+  }
+
+  // Ajustes del vendedor: solo sus datos (lo del negocio lo maneja el dueño)
+  function vistaAjustesVendedor() {
+    const l = NUBE.lugar || {};
+    return '<header class="barra-top"><a class="btn-texto" href="#inicio">← Volver</a><b>Ajustes</b><span></span></header>' +
+      '<main class="pagina ajustes">' +
+      '<div id="caja-cuenta">' + cajaCuenta() + '</div>' +
+      '<section class="caja"><h2>Tus datos</h2>' +
+      '<div class="campo"><label for="v-nombre">Tu nombre</label><input id="v-nombre" value="' + esc(l.nombre || '') + '" autocomplete="name"></div>' +
+      '<div class="campo"><label for="v-wa">Tu WhatsApp</label><input id="v-wa" inputmode="tel" value="' + esc(l.whatsapp || '') + '" placeholder="Ej: 5491123456789"><span class="nota">Con 549 y el código de área, sin 0 ni 15. ' +
+      (ajustes.pedidosA === 'vendedor' ? 'Los pedidos de tu link te llegan a este número.' : 'Por ahora los pedidos llegan al WhatsApp del negocio.') + '</span></div>' +
+      '<button class="btn btn-marca btn-chico" data-accion="guardar-mis-datos">Guardar mis datos</button></section>' +
+      '<section class="caja"><h2>Lo que podés hacer</h2><p class="detalle">' + esc(resumenPermisos(l.permisos)).replace(/^./, (x) => x.toUpperCase()) + '.</p>' +
+      '<p class="nota">Los permisos los decide el dueño del negocio.</p></section>' +
+      '<section class="caja"><h2>Tener la app en tu celular</h2><p>Abrí este link en Chrome (Android) o Safari (iPhone), tocá el menú y elegí <b>"Agregar a la pantalla de inicio"</b>. Queda con su ícono, como cualquier app.</p></section>' +
+      '</main>';
+  }
+
+  async function guardarMisDatos() {
+    const n = document.getElementById('v-nombre'), w = document.getElementById('v-wa');
+    try { await NUBE.equipo.misDatos(n.value, w.value); avisar('Tus datos se guardaron'); app.innerHTML = vistaAjustes(); }
+    catch (e) { avisar(e.message); }
+  }
+
+  // Abrió el link de invitación de un negocio
+  async function abrirUnirse(codigo) {
+    const datos = { tipo: 'unirse', codigo: codigo, cargando: true };
+    abrirCapa(datos);
+    try { datos.info = await NUBE.equipo.verInvitacion(codigo); } catch (e) { datos.error = e.message; }
+    datos.cargando = false;
+    if (!datos.info && !datos.error) NUBE.equipo.guardarInvitacion(null);
+    if (estado.capa === datos) renderCapa(false);
+  }
+
+  function hojaUnirse(c) {
+    if (c.cargando) return ['Invitación', '<p class="detalle">Buscando la invitación…</p>', ''];
+    if (c.error) return ['Invitación', '<p class="error-cuenta">' + esc(c.error) + '</p>', '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Cerrar</button>'];
+    if (!c.info) return ['Invitación', '<p class="detalle">Esta invitación ya se usó o venció. Pedile una nueva al dueño del negocio.</p>', '<button class="btn btn-claro btn-ancho" data-accion="cerrar">Cerrar</button>'];
+    const neg = c.info.negocio;
+    const titulo = '¡Te invitaron a ' + neg + '!';
+    if (NUBE.sesion) {
+      return [titulo,
+        '<p class="detalle">Vas a ver y cargar los productos de <b>' + esc(neg) + '</b> con tu cuenta <b>' + esc(NUBE.email || '') + '</b>.</p>' +
+        '<p class="nota">Los productos que hay ahora en este celular se sacan de acá.</p>' + (c.falla ? '<p class="error-cuenta">' + esc(c.falla) + '</p>' : ''),
+        '<button class="btn btn-marca btn-ancho" data-accion="unirme"' + (c.ocupado ? ' disabled' : '') + '>' + (c.ocupado ? 'Uniéndote…' : 'Unirme a ' + esc(neg)) + '</button>' +
+        '<button class="btn-texto" data-accion="cerrar">Ahora no</button>'];
+    }
+    return [titulo,
+      '<p class="detalle">' + esc(neg) + ' te invitó a vender con Mostrador. Creá tu cuenta con tu correo y vas a ver todos los productos del negocio. Si uno de tu equipo saca una foto, vos ya la tenés.</p>',
+      '<button class="btn btn-marca btn-ancho" data-accion="cuenta" data-modo="crear">Crear mi cuenta</button>' +
+      '<button class="btn-texto" data-accion="cuenta" data-modo="entrar">Ya tengo cuenta</button>'];
+  }
+
+  async function unirmeAhora() {
+    const c = estado.capa;
+    c.ocupado = true; c.falla = ''; renderCapa(false);
+    try { await NUBE.equipo.unirse(c.codigo); cerrarCapa(); await recargarDeLaNube(); location.hash = 'inicio'; avisar('¡Listo! Ya sos parte de ' + c.info.negocio + '.'); }
+    catch (e) { c.ocupado = false; c.falla = e.message; renderCapa(false); }
+  }
+
   /* ================= Catálogo público (lo que abre el cliente con el link) ================= */
   async function iniciarPublico() {
     if (window.NUBE) NUBE.apagar();
@@ -1754,7 +1950,7 @@
     document.body.dataset.vista = 'catalogo';
     app.innerHTML = '<main class="pagina"><p class="vacio cargando-publico">Cargando el catálogo…</p></main>';
     let r;
-    try { r = window.NUBE ? await NUBE.catalogoPublico(ALIAS_PUBLICO) : null; }
+    try { r = window.NUBE ? await NUBE.catalogoPublico(ALIAS_PUBLICO, VENDEDOR_PUBLICO) : null; }
     catch (e) {
       app.innerHTML = '<main class="pagina"><div class="publico-error"><h1>No se pudo abrir el catálogo</h1><p>' +
         (e.message === 'sin-conexion' ? 'Revisá tu conexión a internet.' : 'Probá de nuevo en un ratito.') + '</p>' +
@@ -1889,7 +2085,7 @@
     },
     'salir-editor': (el, ev) => {
       const e = estado.editor;
-      if (e && e.firma !== firmaEditor(e)) { ev.preventDefault(); abrirCapa({ tipo: 'salir' }); }
+      if (e && e.firma !== firmaEditor(e) && puedeEditar(estado.productos.find((x) => x.id === e.id) || { id: e.id })) { ev.preventDefault(); abrirCapa({ tipo: 'salir' }); }
     },
     'guardar-y-salir': async () => { cerrarCapa(); if (await guardarSolo()) volverDelEditor(); },
     'salir-sin-guardar': () => { cerrarCapa(); volverDelEditor(); },
@@ -1909,6 +2105,18 @@
     cerrar: () => cerrarCapa(),
     cuenta: (el) => abrirCuenta(el.dataset.modo),
     'compartir-link': () => abrirLinkCatalogo(),
+    invitar: () => abrirCapa({ tipo: 'invitar', plantilla: 'vendedor' }),
+    plantilla: (el) => { const c = estado.capa; const n = document.getElementById('inv-nombre'); c.nombre = n ? n.value : c.nombre; c.plantilla = el.dataset.p; renderCapa(false); },
+    'crear-invitacion': () => crearInvitacion(),
+    'copiar-invitacion': async () => { const i = document.getElementById('link-invitacion'); if (i) { if (!(await copiar(i.value))) { i.select(); try { document.execCommand('copy'); } catch (e) { /* nada */ } } avisar('Link copiado.'); } },
+    'ver-permisos': (el) => { const m = (estado.equipo && estado.equipo.miembros || []).find((x) => x.usuario === el.dataset.u); if (m) abrirCapa({ tipo: 'permisos', miembro: m, permisos: Object.assign({}, m.permisos) }); },
+    'guardar-permisos': () => guardarPermisos(),
+    'pedir-quitar': () => { estado.capa.confirmar = true; renderCapa(false); },
+    'quitar-vendedor': () => quitarVendedor(),
+    'cancelar-invitacion': async (el) => { try { await NUBE.equipo.cancelar(el.dataset.c); avisar('Invitación cancelada'); cargarEquipo(); } catch (e) { avisar(e.message); } },
+    'unirme': () => unirmeAhora(),
+    'guardar-mis-datos': () => guardarMisDatos(),
+    'reintentar-equipo': () => { estado.equipo = null; app.innerHTML = vistaEquipo(); cargarEquipo(); },
     'copiar-link': async () => {
       const i = document.getElementById('link-catalogo');
       if (!i) return;
@@ -2034,6 +2242,8 @@
   });
 
   document.addEventListener('change', (ev) => {
+    if (ev.target.dataset.permiso && estado.capa && estado.capa.tipo === 'permisos') { estado.capa.permisos[ev.target.dataset.permiso] = ev.target.checked; return; }
+    if (ev.target.id === 'pedidos-a') { ajustes.pedidosA = ev.target.value; guardarAjustes(); avisar('Guardado'); return; }
     const el = ev.target;
     if (el.dataset.campo === 'rubro' && estado.editor) {
       estado.editor.rubro = el.value; estado.editor.rubroManual = true;
@@ -2107,10 +2317,15 @@
   // En Netlify gratis aparece su cartel abajo: dejamos lugar para que no tape botones
   if (/\.netlify\.app$/.test(location.hostname)) document.body.classList.add('con-insignia');
   aplicarColor();
+  if (INVITACION && window.NUBE) {
+    NUBE.equipo.guardarInvitacion(INVITACION);
+    history.replaceState(null, '', location.pathname + '#inicio');
+  }
   if (ALIAS_PUBLICO) iniciarPublico();
   else Promise.all([cargarLogo(), cargarProductos()]).then(navegar, navegar).then(() => {
     if (!window.NUBE) return;
     if (NUBE.recuperando) abrirCuenta('nueva-clave');
+    else if (NUBE.equipo.invitacionPendiente) abrirUnirse(NUBE.equipo.invitacionPendiente);
     NUBE.iniciar();
   });
 })();
