@@ -632,3 +632,8 @@ button.miembro { cursor: pointer; }
 .lista-equipo { grid-template-columns: minmax(0, 1fr); }
 .miembro { min-width: 0; }
 .caja { min-width: 0; }
+.caja > *, #lista-admin, #lista-equipo { min-width: 0; }
+.hoja-cuerpo > *, .hoja-cuerpo .campo, .fila-aumento > * { min-width: 0; }
+.hoja-cuerpo input[type="date"] { min-width: 0; max-width: 100%; }
+.hoja-cuerpo .fila-botones { flex-wrap: wrap; }
+#cl-plan { width: 100%; padding: 12px; border: 1px solid var(--borde); border-radius: 12px; font: inherit; background: var(--superficie); color: var(--texto); }
