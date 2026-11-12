@@ -144,7 +144,11 @@
     } finally { URL.revokeObjectURL(url); }
   }
 
+  // Si la app se abre con ?c=alias, es un cliente mirando el catálogo de un negocio
+  const ALIAS_PUBLICO = new URLSearchParams(location.search).get('c');
+
   const estado = {
+    publico: null,
     productos: [],
     editor: null,     // la publicación que se está armando
     pedido: {},       // catálogo: id -> cantidad
@@ -177,6 +181,7 @@
   }
 
   function navegar() {
+    if (ALIAS_PUBLICO) { if (estado.publico) { cerrarCapa(); app.innerHTML = vistaCatalogo(); } return; }
     cerrarCapa();
     guardarPendientes();
     if (!ajustes.tipoNegocio && vistaActual() === 'inicio') setTimeout(() => { if (!estado.capa && !ajustes.tipoNegocio) abrirCapa({ tipo: 'negocio' }); }, 300);
@@ -1050,6 +1055,7 @@
         '<div class="tipos-negocio">' + op.map((o) => '<button class="tipo-negocio" data-accion="elegir-negocio" data-tipo="' + o[0] + '"' + (ajustes.tipoNegocio === o[0] ? ' aria-pressed="true"' : '') + '><b>' + o[1] + '</b><span>' + o[2] + '</span></button>').join('') + '</div>';
       pie = '';
     }
+    else if (c.tipo === 'link') { const h = hojaLink(c); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
     else if (c.tipo === 'cuenta') { const h = hojaCuenta(c); titulo = h[0]; cuerpo = h[1]; pie = h[2]; }
     else if (c.tipo === 'salir') {
       titulo = '¿Guardar los cambios?';
@@ -1207,11 +1213,14 @@
     const ps = estado.productos;
     const total = Object.keys(estado.pedido).reduce((a, id) => { const p = ps.find((x) => x.id === id); return a + (p ? p.precio * estado.pedido[id] : 0); }, 0);
     const cant = Object.values(estado.pedido).reduce((a, b) => a + b, 0);
-    const avatar = logo ? '<img src="' + esc(local.leer('mostrador:logo')) + '" alt="">' : esc(ajustes.negocio.split(/\s+/).slice(0, 2).map((x) => x[0] || '').join('').toUpperCase());
-    return '<header class="cab-catalogo"><div class="cab-fila"><a class="btn-texto" href="#inicio">← Inicio</a>' +
-      '<span class="etiqueta-vista" title="El link para compartir el catálogo llega con la versión con cuentas">Vista previa de tus clientes</span></div>' +
-      '<div class="fila-cab"><div class="avatar' + (logo ? ' con-logo' : '') + '">' + avatar + '</div>' +
-      '<div><h1>' + esc(ajustes.negocio) + '</h1><p>' + ps.length + (ps.length === 1 ? ' producto' : ' productos') + ' · pedidos por WhatsApp</p></div></div></header>' +
+    const srcLogo = ALIAS_PUBLICO ? estado.publico && estado.publico.logo : logo && local.leer('mostrador:logo');
+    const avatar = srcLogo ? '<img src="' + esc(srcLogo) + '" alt="">' : esc(ajustes.negocio.split(/\s+/).slice(0, 2).map((x) => x[0] || '').join('').toUpperCase());
+    const visibles = ps.filter((p) => !incompleto(p)).length;
+    return '<header class="cab-catalogo">' +
+      (ALIAS_PUBLICO ? '' : '<div class="cab-fila"><a class="btn-texto" href="#inicio">← Inicio</a>' +
+        '<button class="btn btn-chico btn-marca" data-accion="compartir-link">Compartir el link</button></div>') +
+      '<div class="fila-cab"><div class="avatar' + (srcLogo ? ' con-logo' : '') + '">' + avatar + '</div>' +
+      '<div><h1>' + esc(ajustes.negocio) + '</h1><p>' + visibles + (visibles === 1 ? ' producto' : ' productos') + ' · pedidos por WhatsApp</p></div></div></header>' +
       '<main class="pagina">' + (ps.length > 1 ? barraBusqueda('catalogo') : '') +
       '<div id="grilla-catalogo">' + grillaCatalogo() + '</div></main>' +
       '<div id="barra-pedido">' + barraPedido(cant, total) + '</div>';
@@ -1237,7 +1246,7 @@
       const nf = cantidadFotos(p);
       return '<article class="prod"><div class="prod-foto"><button class="ver-detalle" data-accion="ver-detalle" data-id="' + esc(p.id) + '" aria-label="' + esc('Ver ' + p.nombre + (nf > 1 ? ', ' + nf + ' fotos' : '')) + '"><img src="' + p.foto + '" alt="' + esc(p.nombre) + '" loading="lazy">' +
         (nf > 1 ? '<span class="fotos-chip">' + ICONO_FOTOS + nf + '</span>' : '') + '</button>' +
-        '<button class="btn-opciones" data-accion="opciones" data-id="' + esc(p.id) + '" aria-label="' + esc('Opciones de ' + p.nombre) + '">' + ICONO_PUNTOS + '</button></div>' +
+        (ALIAS_PUBLICO ? '' : '<button class="btn-opciones" data-accion="opciones" data-id="' + esc(p.id) + '" aria-label="' + esc('Opciones de ' + p.nombre) + '">' + ICONO_PUNTOS + '</button>') + '</div>' +
         '<div class="prod-info"><span class="prod-rubro">' + esc(RUBROS.nombreDe(rubroDe(p))) + '</span><span class="prod-nombre">' + esc(p.nombre) + '</span>' +
         (det ? '<span class="prod-detalle">' + esc(det) + '</span>' : '') +
         '<span class="prod-precio">' + esc(precioDe(p)) + '</span>' +
@@ -1254,7 +1263,7 @@
   // Ficha del producto con todas sus fotos (lo que ve el cliente al tocar un producto)
   function hojaDetalle() {
     const p = estado.capa.producto;
-    const fotos = [p.foto].concat((p.fotos || []).map(fotoSrc));
+    const fotos = [p.fotoGrande || p.foto].concat((p.fotos || []).map(fotoSrc));
     const a = p.auto || {};
     const datos = esVehiculo(p) ? [['Año', a.anio], ['Kilómetros', a.km !== undefined && a.km !== '' ? Number(a.km).toLocaleString('es-AR') + ' km' : ''], ['Combustible', a.combustible], ['Caja', a.caja]].filter((d) => d[1]) : [];
     const extras = extrasAuto(p);
@@ -1568,7 +1577,8 @@
       '<p class="cuenta-correo">' + esc(NUBE.email || 'Cuenta conectada') + '</p>' +
       '<p class="estado-nube nube-' + e.fase + '">' + ICONO_NUBE + '<span>' + esc(e.mensaje || t[1]) + '</span></p>' +
       (e.ultima ? '<p class="nota">Última vez: ' + new Date(e.ultima).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + '</p>' : '') +
-      '<div class="fila-botones"><button class="btn btn-chico btn-marca" data-accion="nube-ahora">Guardar ahora</button>' +
+      '<button class="btn btn-marca btn-ancho btn-link-catalogo" data-accion="compartir-link">Link de tu catálogo para tus clientes</button>' +
+      '<div class="fila-botones"><button class="btn btn-chico" data-accion="nube-ahora">Guardar ahora</button>' +
       '<button class="btn btn-chico" data-accion="cuenta" data-modo="salir">Cerrar sesión</button></div></section>';
   }
 
@@ -1692,6 +1702,75 @@
       await cargarLogo();
       aplicarColor();
     };
+  }
+
+  /* ================= Link del catálogo ================= */
+  const ICONO_WA = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.6.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.3.8 3.2.7a2.7 2.7 0 0 0 1.8-1.3 2.2 2.2 0 0 0 .2-1.3c-.1-.1-.2-.2-.4-.3z"/></svg>';
+  const ICONO_FB = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor"><path d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.5h-1.2c-1.2 0-1.6.8-1.6 1.6V12h2.8l-.4 2.9h-2.3v7A10 10 0 0 0 22 12z"/></svg>';
+
+  function textoLink(url) { return 'Mirá el catálogo de ' + ajustes.negocio + ' y hacé tu pedido por WhatsApp: ' + url; }
+
+  function hojaLink(c) {
+    if (c.sinCuenta) {
+      return ['Link de tu catálogo',
+        '<p class="detalle">Para tener un link que puedas mandar a tus clientes, primero creá tu cuenta. Así tus productos quedan en internet y tus clientes los ven desde cualquier celular.</p>',
+        '<button class="btn btn-marca btn-ancho" data-accion="cuenta" data-modo="crear">Crear cuenta</button>' +
+        '<button class="btn-texto" data-accion="cuenta" data-modo="entrar">Ya tengo cuenta</button>'];
+    }
+    if (c.cargando) return ['Link de tu catálogo', '<p class="detalle">Armando tu link…</p>', ''];
+    if (c.error) return ['Link de tu catálogo', '<p class="error-cuenta">' + esc(c.error) + '</p>', '<button class="btn btn-marca btn-ancho" data-accion="compartir-link">Probar de nuevo</button>'];
+    const url = c.url;
+    const wa = 'https://wa.me/?text=' + encodeURIComponent(textoLink(url));
+    const fb = 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url);
+    return ['Link de tu catálogo',
+      '<p class="detalle">Mandalo a tus clientes: ven todos tus productos con precio y te hacen el pedido por WhatsApp.</p>' +
+      '<div class="caja-link"><input id="link-catalogo" readonly value="' + esc(url) + '" aria-label="Link del catálogo"><button class="btn btn-chico" data-accion="copiar-link">Copiar</button></div>' +
+      (ajustes.whatsapp ? '' : '<p class="error-cuenta">Falta tu WhatsApp: cargalo en <a href="#ajustes">Ajustes</a> para que te lleguen los pedidos.</p>') +
+      (c.pendientes ? '<p class="nota">Hay ' + c.pendientes + (c.pendientes === 1 ? ' cambio que se está' : ' cambios que se están') + ' guardando en internet. En un ratito aparecen en el catálogo.</p>' : ''),
+      '<a class="btn btn-wa btn-ancho btn-con-icono" href="' + esc(wa) + '" target="_blank" rel="noopener">' + ICONO_WA + 'Enviar por WhatsApp</a>' +
+      '<a class="btn btn-fb btn-ancho btn-con-icono" href="' + esc(fb) + '" target="_blank" rel="noopener">' + ICONO_FB + 'Publicar en Facebook</a>' +
+      '<a class="btn btn-claro btn-ancho" href="' + esc(url) + '" target="_blank" rel="noopener">Ver como lo ve un cliente</a>'];
+  }
+
+  async function abrirLinkCatalogo() {
+    const datos = { tipo: 'link' };
+    if (!window.NUBE || !NUBE.sesion) datos.sinCuenta = true; else datos.cargando = true;
+    if (estado.capa) { estado.capa = datos; renderCapa(false); } else abrirCapa(datos);
+    if (datos.sinCuenta) return;
+    try {
+      // que lo último que se cargó ya esté en internet
+      NUBE.sincronizar();
+      datos.url = await NUBE.linkCatalogo();
+      datos.pendientes = await NUBE.pendientes();
+    } catch (e) { datos.error = e.message; }
+    datos.cargando = false;
+    if (estado.capa === datos) renderCapa(false);
+  }
+
+  /* ================= Catálogo público (lo que abre el cliente con el link) ================= */
+  async function iniciarPublico() {
+    if (window.NUBE) NUBE.apagar();
+    document.body.classList.add('modo-publico');
+    document.body.dataset.vista = 'catalogo';
+    app.innerHTML = '<main class="pagina"><p class="vacio cargando-publico">Cargando el catálogo…</p></main>';
+    let r;
+    try { r = window.NUBE ? await NUBE.catalogoPublico(ALIAS_PUBLICO) : null; }
+    catch (e) {
+      app.innerHTML = '<main class="pagina"><div class="publico-error"><h1>No se pudo abrir el catálogo</h1><p>' +
+        (e.message === 'sin-conexion' ? 'Revisá tu conexión a internet.' : 'Probá de nuevo en un ratito.') + '</p>' +
+        '<button class="btn btn-marca" data-accion="reintentar-publico">Probar de nuevo</button></div></main>';
+      return;
+    }
+    if (!r) {
+      app.innerHTML = '<main class="pagina"><div class="publico-error"><h1>Este catálogo no está disponible</h1><p>Revisá que el link esté completo, o pedile al negocio que te lo mande de nuevo.</p></div></main>';
+      return;
+    }
+    estado.publico = r.negocio;
+    Object.assign(ajustes, { negocio: r.negocio.nombre || 'Catálogo', whatsapp: r.negocio.whatsapp || '', color: r.negocio.color || AJUSTES_BASE.color, mostrarCodigo: !!r.negocio.mostrarCodigo });
+    aplicarColor();
+    document.title = ajustes.negocio + ' · Catálogo';
+    estado.productos = r.productos.filter((p) => !incompleto(p) && p.foto).sort((a, b) => (b.fecha || 0) - (a.fecha || 0));
+    app.innerHTML = vistaCatalogo();
   }
 
   /* ================= Eventos ================= */
@@ -1829,6 +1908,15 @@
     'quitar-logo': () => { try { localStorage.removeItem('mostrador:logo'); } catch (e) { /* nada */ } logo = null; if (window.NUBE) NUBE.ajustesCambiaron(); app.innerHTML = vistaAjustes(); avisar('Logo quitado'); },
     cerrar: () => cerrarCapa(),
     cuenta: (el) => abrirCuenta(el.dataset.modo),
+    'compartir-link': () => abrirLinkCatalogo(),
+    'copiar-link': async () => {
+      const i = document.getElementById('link-catalogo');
+      if (!i) return;
+      const ok = await copiar(i.value);
+      if (!ok) { i.select(); try { document.execCommand('copy'); } catch (e) { /* nada */ } }
+      avisar('Link copiado. Pegalo donde quieras.');
+    },
+    'reintentar-publico': () => iniciarPublico(),
     'cuenta-enviar': () => enviarCuenta(),
     'cuenta-salir-ya': () => salirDeLaCuenta(false),
     'nube-ahora-salir': () => salirDeLaCuenta(true),
@@ -2019,7 +2107,8 @@
   // En Netlify gratis aparece su cartel abajo: dejamos lugar para que no tape botones
   if (/\.netlify\.app$/.test(location.hostname)) document.body.classList.add('con-insignia');
   aplicarColor();
-  Promise.all([cargarLogo(), cargarProductos()]).then(navegar, navegar).then(() => {
+  if (ALIAS_PUBLICO) iniciarPublico();
+  else Promise.all([cargarLogo(), cargarProductos()]).then(navegar, navegar).then(() => {
     if (!window.NUBE) return;
     if (NUBE.recuperando) abrirCuenta('nueva-clave');
     NUBE.iniciar();

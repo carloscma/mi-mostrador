@@ -21,7 +21,8 @@ window.NUBE = (function () {
     negocioLocal: 'mostrador:negocio-local',
     bajada: 'mostrador:ultima-bajada',
     borrados: 'mostrador:borrados',
-    ajustesPend: 'mostrador:ajustes-pendientes'
+    ajustesPend: 'mostrador:ajustes-pendientes',
+    alias: 'mostrador:alias'
   };
 
   function leerLocal(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
@@ -172,6 +173,7 @@ window.NUBE = (function () {
     escribirLocal(K.negocio, null);
     escribirLocal(K.bajada, null);
     escribirLocal(K.borrados, null);
+    escribirLocal(K.alias, null);
     poner('sin-cuenta');
     if (alCambiarProductos) alCambiarProductos();
   }
@@ -271,6 +273,27 @@ window.NUBE = (function () {
     return { k: k, path: path };
   }
 
+  // Miniatura chica para el catálogo de los clientes (carga rápido y gasta poco)
+  function cargarImg(src) {
+    return new Promise((ok, mal) => { const i = new Image(); i.onload = () => ok(i); i.onerror = mal; i.src = src; });
+  }
+  async function subirMini(nid, pid, src, anterior) {
+    if (!src) return null;
+    const k = huella(src) + 'm';
+    if (anterior && anterior.k === k && anterior.path) return anterior;
+    const img = await cargarImg(src);
+    const s = Math.min(1, 600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(img, 0, 0, c.width, c.height);
+    const blob = await new Promise((ok, mal) => c.toBlob((b) => (b ? ok(b) : mal(new Error('sin imagen'))), 'image/jpeg', 0.78));
+    const path = nid + '/' + pid + '/' + k + '.jpg';
+    await pedirConSesion('/storage/v1/object/fotos/' + path, { metodo: 'POST', cuerpo: blob, cabeceras: { 'Content-Type': 'image/jpeg', 'x-upsert': 'true', 'cache-control': '31536000' } });
+    return { k: k, path: path };
+  }
+
   function urlFoto(path) { return URL_BASE + '/storage/v1/object/public/fotos/' + path; }
 
   async function bajarFoto(path) {
@@ -294,10 +317,11 @@ window.NUBE = (function () {
     Object.keys(p).forEach((k) => { if (CAMPOS_FUERA.indexOf(k) < 0 && k.charAt(0) !== '_') d[k] = p[k]; });
     d.foto = nube.foto.path;
     d.recorte = nube.recorte ? nube.recorte.path : null;
+    d.mini = nube.mini ? nube.mini.path : null;
     d.fotos = nube.fotos.map((f, i) => ({ path: f.path, diseno: !(p.fotos[i] && p.fotos[i].diseno === false) }));
     return d;
   }
-  function caminos(n) { return n ? [n.foto && n.foto.path, n.recorte && n.recorte.path].concat((n.fotos || []).map((f) => f && f.path)).filter(Boolean) : []; }
+  function caminos(n) { return n ? [n.foto && n.foto.path, n.recorte && n.recorte.path, n.mini && n.mini.path].concat((n.fotos || []).map((f) => f && f.path)).filter(Boolean) : []; }
   function mismasFotos(n, d) {
     if (!n || !n.foto || n.foto.path !== d.foto) return false;
     if ((n.recorte ? n.recorte.path : null) !== (d.recorte || null)) return false;
@@ -319,13 +343,14 @@ window.NUBE = (function () {
   let timer = null;
 
   function programar(ms) {
-    if (!sesion) return;
+    if (!sesion || apagado) return;
     clearTimeout(timer);
     timer = setTimeout(() => sincronizar(), ms === undefined ? 2500 : ms);
   }
 
+  let apagado = false;
   async function sincronizar() {
-    if (!sesion) return;
+    if (!sesion || apagado) return;
     if (corriendo) { otraVez = true; return corriendo; }
     corriendo = (async () => {
       let cambiaronLocales = false;
@@ -344,8 +369,11 @@ window.NUBE = (function () {
           escribirLocal(K.borrados, resto);
         }
 
-        // 2. Subir lo pendiente
+        // 2. Subir lo pendiente (los que se subieron antes de la Etapa 13 no tienen miniatura)
         let ps = await A.todos();
+        for (const p of ps) {
+          if (!esEjemplo(p) && p._nube && p._nube.foto && !p._nube.mini && !p._pendiente) { p._pendiente = true; p._cambio = Date.now(); await guardarLocal(p); }
+        }
         let pend = ps.filter((p) => p._pendiente && !esEjemplo(p));
         estado.pendientes = pend.length;
         let hechos = 0;
@@ -355,7 +383,7 @@ window.NUBE = (function () {
           const viejo = p._nube || yaSubido[p.id] || { fotos: [] };
           const fotos = (p.fotos || []).map((f) => (typeof f === 'string' ? { src: f, diseno: true } : f));
           p.fotos = fotos;
-          const nube = { foto: await subirFoto(nid, p.id, p.foto, viejo.foto), recorte: await subirFoto(nid, p.id, p.recorte, viejo.recorte), fotos: [] };
+          const nube = { foto: await subirFoto(nid, p.id, p.foto, viejo.foto), recorte: await subirFoto(nid, p.id, p.recorte, viejo.recorte), mini: await subirMini(nid, p.id, p.foto, viejo.mini), fotos: [] };
           for (const f of fotos) { const k = huella(srcDe(f)); nube.fotos.push(await subirFoto(nid, p.id, srcDe(f), (viejo.fotos || []).find((x) => x && x.k === k))); }
           await pedirConSesion('/rest/v1/productos?on_conflict=negocio_id,id', { metodo: 'POST', json: [{ id: p.id, negocio_id: nid, datos: datosDe(p, nube), borrado: false }], cabeceras: { Prefer: 'resolution=merge-duplicates,return=minimal' } });
           yaSubido[p.id] = nube;
@@ -402,6 +430,7 @@ window.NUBE = (function () {
             for (const x of d.fotos || []) { const r = await bajar(x.path); nuevo.fotos.push({ src: r[0], diseno: x.diseno !== false }); nf.push(r[1]); }
             nuevo._nube = { foto: fo[1], recorte: re[1], fotos: nf };
           }
+          nuevo._nube = Object.assign({}, nuevo._nube, { mini: d.mini ? { k: huella(nuevo.foto) + 'm', path: d.mini } : null });
           yaSubido[f.id] = nuevo._nube;
           nuevo.id = f.id;
           nuevo._pendiente = false;
@@ -447,8 +476,42 @@ window.NUBE = (function () {
     }
   })();
 
+  /* ---------------- Catálogo con link ---------------- */
+  function linkDe(alias) { return location.origin + location.pathname.replace(/index\.html$/, '') + '?c=' + encodeURIComponent(alias); }
+
+  async function linkCatalogo() {
+    let alias = leerLocal(K.alias);
+    if (!alias) {
+      try { alias = await pedirConSesion('/rest/v1/rpc/catalogo_alias', { metodo: 'POST', json: {} }); }
+      catch (e) { throw new Error(e.codigo === 'sin-conexion' ? 'No hay conexión a internet. Probá de nuevo.' : 'No se pudo armar el link: ' + e.message); }
+      escribirLocal(K.alias, alias);
+    }
+    return linkDe(alias);
+  }
+
+  // Lo que ve el cliente (no hace falta cuenta)
+  async function catalogoPublico(alias) {
+    let r;
+    try { r = await pedir('/rest/v1/rpc/catalogo_publico', { metodo: 'POST', json: { p_alias: alias }, conSesion: false }); }
+    catch (e) { if (e.codigo === 'sin-conexion') throw new Error('sin-conexion'); throw e; }
+    if (!r || !r.negocio) return null;
+    const productos = (r.productos || []).map((x) => {
+      const d = x.datos || {};
+      return Object.assign({}, d, {
+        id: x.id,
+        foto: d.mini ? urlFoto(d.mini) : urlFoto(d.foto),
+        fotoGrande: urlFoto(d.foto),
+        fotos: (d.fotos || []).map((f) => ({ src: urlFoto(f.path), diseno: f.diseno !== false }))
+      });
+    });
+    return { negocio: r.negocio, productos: productos };
+  }
+
   return {
     get sesion() { return sesion; },
+    linkCatalogo: linkCatalogo,
+    catalogoPublico: catalogoPublico,
+    apagar() { apagado = true; clearTimeout(timer); },
     get email() { return sesion && sesion.user && sesion.user.email; },
     get recuperando() { return recuperando; },
     set recuperando(v) { recuperando = v; },
