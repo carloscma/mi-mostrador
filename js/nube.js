@@ -116,7 +116,9 @@ window.NUBE = (function () {
 
   async function crearCuenta(email, clave) {
     let r;
-    try { r = await pedir('/auth/v1/signup', { metodo: 'POST', json: { email: email.trim(), password: clave }, conSesion: false }); }
+    // queda registrado que aceptó los términos y la privacidad (versión y fecha)
+    const acepto = { acepto_terminos: (window.LEGAL && LEGAL.VERSION) || '', acepto_fecha: new Date().toISOString() };
+    try { r = await pedir('/auth/v1/signup', { metodo: 'POST', json: { email: email.trim(), password: clave, data: acepto }, conSesion: false }); }
     catch (e) { throw new Error(traducir(e)); }
     const s = r && (r.access_token ? r : r.session);
     if (!s || !s.access_token) {
@@ -689,12 +691,37 @@ window.NUBE = (function () {
   const admin = {
     lista: () => llamar('admin_negocios'),
     guardar: (d) => llamar('admin_guardar', { p_negocio: d.id, p_activo: d.activo, p_plan: d.plan, p_vence: d.vence || null, p_limite_productos: d.limite_productos, p_limite_vendedores: d.limite_vendedores }),
-    contacto: (wa) => llamar('admin_contacto', { p_whatsapp: wa })
+    contacto: (wa) => llamar('admin_contacto', { p_whatsapp: wa }),
+    datos: (d) => llamar('admin_datos', { p_datos: d }),
+    solicitudes: () => llamar('admin_solicitudes'),
+    atender: (c) => llamar('admin_atender', { p_codigo: c })
+  };
+
+  /* ---------------- Datos públicos de Mostrador y pedidos de baja (sin cuenta) ---------------- */
+  let datosCache = null;
+  const legal = {
+    async datos(forzar) {
+      if (datosCache && !forzar) return datosCache;
+      try { datosCache = (await pedir('/rest/v1/rpc/datos_mostrador', { metodo: 'POST', json: {}, conSesion: false })) || {}; }
+      catch (e) { datosCache = datosCache || leerLocal('mostrador:datos-legales') || {}; return datosCache; }
+      escribirLocal('mostrador:datos-legales', datosCache);
+      return datosCache;
+    },
+    async pedirBaja(tipo, correo, negocio, detalle) {
+      try { return await pedir('/rest/v1/rpc/pedir_baja', { metodo: 'POST', json: { p_tipo: tipo, p_correo: correo, p_negocio: negocio, p_detalle: detalle }, conSesion: false }); }
+      catch (e) {
+        if (e.codigo === 'sin-conexion') throw new Error('sin-conexion');
+        if (/correo invalido/.test(e.message)) throw new Error('Revisá el correo: parece que está mal escrito.');
+        if (/demasiados/.test(e.message)) throw new Error('Ya mandaste varios pedidos hoy. Si es urgente, escribinos por WhatsApp.');
+        throw new Error('No se pudo enviar el pedido. Probá de nuevo o escribinos por WhatsApp.');
+      }
+    }
   };
 
   return {
     get sesion() { return sesion; },
     admin: admin,
+    legal: legal,
     get esAdmin() { const l = lugar(); return !!(l && l.admin); },
     actualizarLugar: () => (sesion ? traerLugar().catch(() => null) : Promise.resolve(null)),
     get lugar() { return lugar(); },

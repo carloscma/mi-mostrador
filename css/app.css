@@ -637,3 +637,31 @@ button.miembro { cursor: pointer; }
 .hoja-cuerpo input[type="date"] { min-width: 0; max-width: 100%; }
 .hoja-cuerpo .fila-botones { flex-wrap: wrap; }
 #cl-plan { width: 100%; padding: 12px; border: 1px solid var(--borde); border-radius: 12px; font: inherit; background: var(--superficie); color: var(--texto); }
+
+/* ---------- Etapa 16: términos, privacidad y botón de baja ---------- */
+.legal { line-height: 1.55; font-size: 15.5px; gap: 10px; }
+.legal h1 { font-family: var(--display); font-size: 24px; line-height: 1.2; margin: 6px 0 0; }
+.legal h2 { font-size: 17px; margin: 14px 0 0; }
+.legal p, .legal ul { margin: 0; }
+.legal ul { padding-left: 20px; display: grid; gap: 6px; }
+.legal a { color: var(--acento); font-weight: 600; }
+.legal-fecha { color: var(--suave); font-size: 13.5px; }
+.legal-leyenda { padding: 12px 14px; border-radius: 12px; background: var(--superficie); border: 1px solid var(--borde); font-size: 14px; color: var(--suave); }
+.legal-links { margin-top: 10px !important; font-size: 14px; }
+.falta-dato { background: #FFF1D6; color: #7A4B00; padding: 0 4px; border-radius: 4px; }
+.legal textarea { width: 100%; padding: 12px; border: 1px solid var(--borde); border-radius: 12px; font: inherit; background: var(--superficie); color: var(--texto); resize: vertical; }
+.tipos-baja { margin: 4px 0; }
+.codigo-tramite { display: grid; gap: 4px; justify-items: center; padding: 18px; border-radius: 14px; background: var(--marca-suave); text-align: center; }
+.codigo-tramite span { color: var(--suave); font-size: 14px; }
+.codigo-tramite b { font-family: ui-monospace, monospace; font-size: 24px; letter-spacing: 1px; color: var(--acento); }
+.pie-legal { margin: 18px 0 0; text-align: center; font-size: 13px; color: var(--suave); line-height: 1.8; }
+.pie-legal a { color: var(--suave); text-decoration: underline; }
+.interruptor.acepto { margin-top: 6px; align-items: flex-start; }
+.interruptor.acepto span { font-size: 14px; line-height: 1.4; }
+.interruptor.acepto a { color: var(--acento); font-weight: 700; }
+.miembro.solicitud { align-items: flex-start; }
+.miembro.solicitud.atendida { opacity: .6; }
+.miembro.solicitud .btn { flex: none; }
+.legal a.btn { font-weight: 700; text-decoration: none; }
+.legal a.btn-wa { color: #fff; }
+.legal a.btn-claro { color: var(--texto); }

@@ -203,7 +203,7 @@
   /* ---------------- Navegación ---------------- */
   function vistaActual() {
     const h = location.hash.replace(/^#/, '');
-    return ['editor', 'catalogo', 'ajustes', 'precios', 'completar', 'equipo', 'admin'].indexOf(h) >= 0 ? h : 'inicio';
+    return ['editor', 'catalogo', 'ajustes', 'precios', 'completar', 'equipo', 'admin', 'terminos', 'privacidad', 'baja'].indexOf(h) >= 0 ? h : 'inicio';
   }
 
   function navegar() {
@@ -221,6 +221,7 @@
     else if (v === 'precios') app.innerHTML = vistaPrecios();
     else if (v === 'equipo') { app.innerHTML = vistaEquipo(); cargarEquipo(); }
     else if (v === 'admin') { app.innerHTML = vistaAdmin(); cargarAdmin(); }
+    else if (v === 'terminos' || v === 'privacidad' || v === 'baja') { app.innerHTML = vistaLegal(v); cargarDatosLegales(); }
     else if (v === 'completar') {
       app.innerHTML = vistaCompletar();
       const id = estado.filaCompletar;
@@ -341,6 +342,7 @@
       '<div class="accesos">' + (ps.length && (puede('editar') || puede('precios')) ? '<a class="acceso" href="#precios">Precios</a>' : '') + '<a class="acceso" href="#catalogo">Ver catálogo</a></div></div>' +
       grilla + '</section>' +
       (ALMACEN.soloMemoria ? '<p class="nota">Este navegador no deja guardar: tus fotos se borran al cerrar la página.</p>' : '') +
+      pieLegal() +
       '</main>';
   }
 
@@ -1258,7 +1260,8 @@
       '<div class="fila-cab"><div class="avatar' + (srcLogo ? ' con-logo' : '') + '">' + avatar + '</div>' +
       '<div><h1>' + esc(ajustes.negocio) + '</h1><p>' + visibles + (visibles === 1 ? ' producto' : ' productos') + ' · pedidos por WhatsApp</p></div></div></header>' +
       '<main class="pagina">' + (ps.length > 1 ? barraBusqueda('catalogo') : '') +
-      '<div id="grilla-catalogo">' + grillaCatalogo() + '</div></main>' +
+      '<div id="grilla-catalogo">' + grillaCatalogo() + '</div>' +
+      (ALIAS_PUBLICO ? '<p class="pie-legal">Catálogo hecho con Mostrador · <a href="' + esc(location.pathname) + '#privacidad">Privacidad</a></p>' : '') + '</main>' +
       '<div id="barra-pedido">' + barraPedido(cant, total) + '</div>';
   }
 
@@ -1590,6 +1593,7 @@
       '<input class="oculto" id="a-importar" type="file" accept=".json,application/json" data-accion="importar">' +
       (local.leer('mostrador:ultima-copia') ? '<p class="nota">Última copia: ' + esc(local.leer('mostrador:ultima-copia')) + '</p>' : '') + '</section>' +
       '<section class="caja"><h2>Tener la app en tu celular</h2><p>Abrí este link en Chrome (Android) o Safari (iPhone), tocá el menú y elegí <b>"Agregar a la pantalla de inicio"</b>. Queda con su ícono, como cualquier app.</p></section>' +
+      pieLegal() +
       '</main>';
   }
 
@@ -1647,8 +1651,9 @@
     const ocupado = c.ocupado ? ' disabled' : '';
     if (c.modo === 'crear') {
       return ['Crear tu cuenta',
-        '<p class="detalle">Tus productos se guardan en internet y los ves en cualquier celular donde entres.</p>' + campoCorreo + campoClave(false) + error +
-        '<p class="nota">Anotá la contraseña en un lugar seguro.</p>',
+        '<p class="detalle">Tus productos se guardan en internet y los ves en cualquier celular donde entres.</p>' + campoCorreo + campoClave(false) +
+        '<p class="nota">Anotá la contraseña en un lugar seguro.</p>' +
+        '<label class="interruptor acepto"><input type="checkbox" id="c-acepto"' + (c.acepto ? ' checked' : '') + '><span>Leí y acepto los <a href="#terminos" target="_blank" rel="noopener">Términos y condiciones</a> y la <a href="#privacidad" target="_blank" rel="noopener">Política de privacidad</a></span></label>' + error,
         '<button class="btn btn-marca btn-ancho" data-accion="cuenta-enviar"' + ocupado + '>' + (c.ocupado ? 'Creando…' : 'Crear cuenta') + '</button>' +
         '<button class="btn-texto" data-accion="cuenta" data-modo="entrar">Ya tengo cuenta</button>'];
     }
@@ -1695,6 +1700,9 @@
     const clave = document.getElementById('c-clave');
     c.correo = correo ? correo.value.trim() : c.correo;
     const pw = clave ? clave.value : '';
+    const acepto = document.getElementById('c-acepto');
+    if (acepto) c.acepto = acepto.checked;
+    if (c.modo === 'crear' && !c.acepto) { c.error = 'Para crear la cuenta tenés que aceptar los Términos y la Política de privacidad.'; renderCapa(false); if (document.getElementById('c-clave')) document.getElementById('c-clave').value = pw; return; }
     if (correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.correo)) { c.error = 'Escribí tu correo completo (por ejemplo nombre@gmail.com).'; renderCapa(false); return; }
     if (clave && pw.length < 6) { c.error = 'La contraseña tiene que tener al menos 6 letras o números.'; renderCapa(false); if (document.getElementById('c-clave')) document.getElementById('c-clave').value = pw; return; }
     c.error = ''; c.ocupado = true; renderCapa(false);
@@ -1741,6 +1749,7 @@
     else if (v === 'ajustes') app.innerHTML = vistaAjustes();
     else if (v === 'equipo') { if (esVendedor()) location.hash = 'inicio'; else cargarEquipo(); }
     else if (v === 'admin') { /* el panel se actualiza solo al entrar */ }
+    else if (v === 'terminos' || v === 'privacidad' || v === 'baja') { /* páginas fijas */ }
     window.scrollTo(0, y);
   }
 
@@ -1845,6 +1854,85 @@
     return partes.length ? '<p class="linea-plan">' + esc(partes.join(' · ')) + '</p>' : '';
   }
 
+  /* ================= Términos, privacidad y botón de baja ================= */
+  function pieLegal() {
+    return '<nav class="pie-legal" aria-label="Información legal"><a href="#terminos">Términos</a> · <a href="#privacidad">Privacidad</a> · <a href="#baja">Botón de arrepentimiento</a> · <a href="#baja">Botón de baja</a></nav>';
+  }
+  function datosLegales() { try { return JSON.parse(localStorage.getItem('mostrador:datos-legales')) || {}; } catch (e) { return {}; } }
+  async function cargarDatosLegales() {
+    if (!window.NUBE) return;
+    await NUBE.legal.datos();
+    const v = vistaActual();
+    if ((v === 'terminos' || v === 'privacidad' || v === 'baja') && !(v === 'baja' && app.querySelector('input:focus, textarea:focus'))) {
+      const y = window.scrollY; const antes = app.innerHTML; const nuevo = vistaLegal(v);
+      if (nuevo !== antes) { app.innerHTML = nuevo; window.scrollTo(0, y); }
+    }
+  }
+  estado.baja = null;
+
+  function vistaLegal(v) {
+    const d = datosLegales();
+    const titulo = v === 'terminos' ? 'Términos' : v === 'privacidad' ? 'Privacidad' : 'Baja';
+    let cuerpo;
+    if (v === 'terminos') cuerpo = window.LEGAL ? LEGAL.terminos(d) : '';
+    else if (v === 'privacidad') cuerpo = window.LEGAL ? LEGAL.privacidad(d) : '';
+    else cuerpo = vistaBaja(d);
+    return '<header class="barra-top"><a class="btn-texto" href="#inicio" data-accion="volver-legal">← Volver</a><b>' + titulo + '</b><span></span></header>' +
+      '<main class="pagina legal">' + cuerpo + '</main>';
+  }
+
+  function vistaBaja(d) {
+    const b = estado.baja;
+    const l = lugarNube();
+    if (b && b.codigo) {
+      const msj = 'Hola! Hice un pedido de ' + ({ arrepentimiento: 'arrepentimiento', baja: 'baja del servicio', datos: 'acceso, corrección o borrado de mis datos' })[b.tipo] + ' en Mostrador. Código: ' + b.codigo + '. Correo: ' + b.correo + (b.negocio ? '. Negocio: ' + b.negocio : '') + '.';
+      return '<h1>Pedido recibido</h1>' +
+        '<div class="codigo-tramite"><span>Tu código de pedido</span><b>' + esc(b.codigo) + '</b></div>' +
+        '<p>Guardá este código. ' + (b.sinInternet ? 'Como no había internet, el pedido <b>todavía no nos llegó</b>: mandalo por WhatsApp o por correo con los botones de abajo.' : 'Lo vamos a gestionar dentro de las 24 horas y te vamos a responder a <b>' + esc(b.correo) + '</b>.') + '</p>' +
+        (d.whatsapp ? '<a class="btn btn-wa btn-ancho btn-con-icono" href="https://wa.me/' + esc(d.whatsapp) + '?text=' + encodeURIComponent(msj) + '" target="_blank" rel="noopener">' + ICONO_WA + 'Avisar también por WhatsApp</a>' : '') +
+        (d.correo ? '<a class="btn btn-claro btn-ancho" href="mailto:' + esc(d.correo) + '?subject=' + encodeURIComponent('Pedido ' + b.codigo) + '&body=' + encodeURIComponent(msj) + '">Avisar por correo</a>' : '') +
+        '<button class="btn-texto" data-accion="nueva-baja">Hacer otro pedido</button>';
+    }
+    const tipo = (b && b.tipo) || 'baja';
+    return '<h1>Botón de arrepentimiento y botón de baja</h1>' +
+      '<p>Desde acá podés, sin necesidad de entrar a tu cuenta ni hacer otro trámite:</p>' +
+      '<ul><li><b>Arrepentirte</b> de un plan que contrataste hace 10 días corridos o menos. Te devolvemos lo que pagaste.</li>' +
+      '<li><b>Dar de baja</b> el servicio en cualquier momento.</li>' +
+      '<li>Pedir <b>acceso, corrección o borrado</b> de tus datos personales.</li></ul>' +
+      '<p>Te damos un código del pedido en el momento y lo gestionamos dentro de las 24 horas.</p>' +
+      '<div class="tipos-negocio tipos-baja" role="radiogroup" aria-label="Qué querés hacer">' +
+      Object.keys(TIPO_BAJA).map((k) => '<button class="tipo-negocio" data-accion="tipo-baja" data-t="' + k + '" role="radio" aria-pressed="' + (tipo === k) + '" aria-checked="' + (tipo === k) + '"><b>' + TIPO_BAJA[k] + '</b><span>' + TIPO_BAJA_DETALLE[k] + '</span></button>').join('') + '</div>' +
+      '<div class="campo"><label for="baja-correo">Correo de tu cuenta</label><input id="baja-correo" type="email" inputmode="email" autocomplete="email" value="' + esc((b && b.correo) || (window.NUBE && NUBE.email) || '') + '"></div>' +
+      '<div class="campo"><label for="baja-negocio">Nombre de tu negocio (opcional)</label><input id="baja-negocio" value="' + esc((b && b.negocio) || (l ? ajustes.negocio : '')) + '"></div>' +
+      '<div class="campo"><label for="baja-detalle">Comentario (opcional)</label><textarea id="baja-detalle" rows="3">' + esc((b && b.detalle) || '') + '</textarea></div>' +
+      (b && b.error ? '<p class="error-cuenta">' + esc(b.error) + '</p>' : '') +
+      '<button class="btn btn-marca btn-ancho" data-accion="enviar-baja"' + (b && b.ocupado ? ' disabled' : '') + '>' + (b && b.ocupado ? 'Enviando…' : 'Enviar pedido') + '</button>' +
+      '<p class="nota">Tus productos y datos no se borran por pedir la baja: se borran solo si lo pedís en "Mis datos" o pasados los plazos de la <a href="#privacidad">Política de privacidad</a>.</p>';
+  }
+  const TIPO_BAJA = { arrepentimiento: 'Me arrepiento', baja: 'Dar de baja', datos: 'Mis datos' };
+  const TIPO_BAJA_DETALLE = { arrepentimiento: 'Contraté un plan hace 10 días o menos', baja: 'Quiero dejar de usar Mostrador', datos: 'Ver, corregir o borrar mis datos personales' };
+
+  async function enviarBaja() {
+    const b = estado.baja = Object.assign({ tipo: 'baja' }, estado.baja || {});
+    b.correo = document.getElementById('baja-correo').value.trim();
+    b.negocio = document.getElementById('baja-negocio').value.trim();
+    b.detalle = document.getElementById('baja-detalle').value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.correo)) { b.error = 'Escribí el correo de tu cuenta (por ejemplo nombre@gmail.com).'; app.innerHTML = vistaLegal('baja'); return; }
+    b.error = ''; b.ocupado = true; app.innerHTML = vistaLegal('baja');
+    try { b.codigo = await NUBE.legal.pedirBaja(b.tipo, b.correo, b.negocio, b.detalle); }
+    catch (e) {
+      if (e.message === 'sin-conexion') {
+        // sin internet: igual le damos un código y que lo mande por WhatsApp o correo
+        const f = new Date();
+        b.codigo = ({ arrepentimiento: 'ARR', baja: 'BAJ', datos: 'DAT' })[b.tipo] + '-' + String(f.getFullYear()).slice(2) + String(f.getMonth() + 1).padStart(2, '0') + String(f.getDate()).padStart(2, '0') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+        b.sinInternet = true;
+      } else b.error = e.message;
+    }
+    b.ocupado = false;
+    if (b.codigo) await NUBE.legal.datos().catch(() => null);  // para los botones de WhatsApp y correo
+    if (vistaActual() === 'baja') { app.innerHTML = vistaLegal('baja'); window.scrollTo(0, 0); }
+  }
+
   /* ================= Panel de administrador (Ariel) ================= */
   const PLANES = {
     prueba: { nombre: 'Prueba gratis', productos: 50, vendedores: 2, dias: 7 },
@@ -1908,14 +1996,42 @@
       '<label class="buscador"><span class="sr">Buscar clientes</span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>' +
       '<input type="search" id="buscar-admin" placeholder="Buscar por nombre, correo o WhatsApp" value="' + esc(f.q) + '" autocomplete="off"></label>' +
       '<div id="lista-admin">' + cuerpo + '</div></section>' +
-      '<section class="caja"><h2>Tu WhatsApp de Mostrador</h2><p class="detalle">A este número te escriben los clientes cuando se les termina la prueba o se les vence el plan.</p>' +
-      '<div class="caja-link"><input id="admin-wa" inputmode="tel" value="' + esc((a && a.whatsapp) || '') + '" placeholder="Ej: 5491123456789"><button class="btn btn-chico btn-marca" data-accion="guardar-contacto">Guardar</button></div></section>' +
+      seccionSolicitudes() +
+      '<section class="caja"><h2>Datos de Mostrador</h2><p class="detalle">Aparecen en los Términos, en la Política de privacidad y en el botón de baja. Al WhatsApp te escriben los clientes cuando se les vence la prueba o el plan.</p>' +
+      campoDato('whatsapp', 'Tu WhatsApp', 'Ej: 5491123456789', 'tel') +
+      campoDato('responsable', 'Nombre y apellido (o razón social)', 'Quién presta el servicio', 'text') +
+      campoDato('correo', 'Correo de contacto', 'Ej: mostrador@gmail.com', 'email') +
+      campoDato('lugar', 'Ciudad y provincia', 'Ej: Godoy Cruz, Mendoza', 'text') +
+      campoDato('cuit', 'CUIT (opcional)', 'Ej: 20-12345678-9', 'text') +
+      '<button class="btn btn-marca btn-chico" data-accion="guardar-datos">Guardar datos</button>' +
+      '<p class="nota"><a href="#terminos">Ver Términos</a> · <a href="#privacidad">Ver Privacidad</a> · <a href="#baja">Ver botón de baja</a></p></section>' +
       '</main>';
   }
 
   async function cargarAdmin() {
-    try { estado.admin = await NUBE.admin.lista(); } catch (e) { estado.admin = { error: e.message }; }
+    try {
+      const r = await Promise.all([NUBE.admin.lista(), NUBE.admin.solicitudes().catch(() => []), NUBE.legal.datos(true)]);
+      estado.admin = r[0]; estado.admin.solicitudes = r[1] || []; estado.admin.datos = r[2] || {};
+    } catch (e) { estado.admin = { error: e.message }; }
     refrescarAdmin();
+  }
+  function campoDato(k, rotulo, ph, tipo) {
+    const d = (estado.admin && estado.admin.datos) || {};
+    return '<div class="campo"><label for="dato-' + k + '">' + rotulo + '</label><input id="dato-' + k + '" data-dato="' + k + '"' + (tipo === 'tel' ? ' inputmode="tel"' : tipo === 'email' ? ' type="email"' : '') +
+      ' value="' + esc(d[k] || '') + '" placeholder="' + esc(ph) + '"></div>';
+  }
+  const TIPOS_SOLICITUD = { arrepentimiento: 'Arrepentimiento', baja: 'Baja del servicio', datos: 'Mis datos' };
+  function seccionSolicitudes() {
+    const ls = (estado.admin && estado.admin.solicitudes) || [];
+    if (!estado.admin || estado.admin.error) return '';
+    const pendientes = ls.filter((x) => !x.atendida).length;
+    return '<section class="caja"><h2>Pedidos de baja y arrepentimiento' + (pendientes ? ' <span class="estado-cliente vencido">' + pendientes + ' sin atender</span>' : '') + '</h2>' +
+      (ls.length ? '<p class="detalle">Respondé dentro de las 24 horas. Para dar la baja, pausá la cuenta del cliente en la lista de arriba.</p><div class="lista-equipo">' + ls.map((x) =>
+        '<div class="miembro solicitud' + (x.atendida ? ' atendida' : '') + '"><div><b>' + esc(TIPOS_SOLICITUD[x.tipo] || x.tipo) + ' · ' + esc(x.codigo) + '</b>' +
+        '<span>' + esc(x.correo) + (x.negocio ? ' · ' + esc(x.negocio) : '') + ' · ' + new Date(x.creado).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</span>' +
+        (x.detalle ? '<small>' + esc(x.detalle) + '</small>' : '') + '</div>' +
+        '<button class="btn btn-chico" data-accion="atender" data-c="' + esc(x.codigo) + '">' + (x.atendida ? 'Atendido ✓' : 'Marcar atendido') + '</button></div>').join('') + '</div>'
+        : '<p class="detalle">No hay pedidos.</p>') + '</section>';
   }
   function refrescarAdmin() {
     if (vistaActual() !== 'admin') return;
@@ -2097,6 +2213,7 @@
       '<section class="caja"><h2>Lo que podés hacer</h2><p class="detalle">' + esc(resumenPermisos(l.permisos)).replace(/^./, (x) => x.toUpperCase()) + '.</p>' +
       '<p class="nota">Los permisos los decide el dueño del negocio.</p></section>' +
       '<section class="caja"><h2>Tener la app en tu celular</h2><p>Abrí este link en Chrome (Android) o Safari (iPhone), tocá el menú y elegí <b>"Agregar a la pantalla de inicio"</b>. Queda con su ícono, como cualquier app.</p></section>' +
+      pieLegal() +
       '</main>';
   }
 
@@ -2330,7 +2447,20 @@
       renderCapa(false);
     },
     'guardar-cliente': () => guardarCliente(),
-    'guardar-contacto': async () => { const i = document.getElementById('admin-wa'); try { await NUBE.admin.contacto(i.value); avisar('WhatsApp guardado'); NUBE.actualizarLugar(); } catch (e) { avisar(e.message); } },
+    'guardar-datos': async () => {
+      const d = {};
+      app.querySelectorAll('[data-dato]').forEach((i) => { d[i.dataset.dato] = i.value; });
+      try { await NUBE.admin.datos(d); avisar('Datos guardados'); NUBE.actualizarLugar(); cargarAdmin(); } catch (e) { avisar(e.message); }
+    },
+    atender: async (el) => { try { await NUBE.admin.atender(el.dataset.c); cargarAdmin(); } catch (e) { avisar(e.message); } },
+    'enviar-baja': () => enviarBaja(),
+    'tipo-baja': (el) => {
+      const b = estado.baja = Object.assign({}, estado.baja || {});
+      ['correo', 'negocio', 'detalle'].forEach((k) => { const i = document.getElementById('baja-' + k); if (i) b[k] = i.value; });
+      b.tipo = el.dataset.t; app.innerHTML = vistaLegal('baja');
+    },
+    'volver-legal': (el, ev) => { if (history.length > 1) { ev.preventDefault(); history.back(); } },
+    'nueva-baja': () => { estado.baja = null; app.innerHTML = vistaLegal('baja'); },
     'reintentar-equipo': () => { estado.equipo = null; app.innerHTML = vistaEquipo(); cargarEquipo(); },
     'copiar-link': async () => {
       const i = document.getElementById('link-catalogo');
