@@ -582,3 +582,6 @@ body[data-vista="editor"] #aviso { top: calc(70px + env(safe-area-inset-top)); }
 .publico-error { padding: 30vh 8px 0; text-align: center; }
 .publico-error h1 { font-family: var(--display); font-size: 22px; margin: 0 0 8px; }
 .publico-error p { color: var(--suave); margin: 0 0 16px; }
+.btn-pedido { justify-content: space-between; box-shadow: 0 6px 18px rgb(31 157 85 / .35); }
+.con-logo-wa { display: inline-flex; align-items: center; gap: 8px; }
+.con-logo-wa svg { width: 22px; height: 22px; }

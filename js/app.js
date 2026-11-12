@@ -1229,7 +1229,7 @@
   function barraPedido() {
     const ls = lineasPedido();
     const cant = ls.reduce((a, l) => a + l.n, 0);
-    return cant ? '<div class="barra-abajo"><button class="btn btn-marca btn-ancho fila" data-accion="ver-pedido"><span>Ver pedido · ' + cant + '</span><span>' + esc(totalTexto(ls)) + '</span></button></div>' : '';
+    return cant ? '<div class="barra-abajo"><button class="btn btn-wa btn-ancho fila btn-pedido" data-accion="ver-pedido"><span class="con-logo-wa">' + ICONO_WA + 'Enviar pedido · ' + cant + '</span><span>' + esc(totalTexto(ls)) + '</span></button></div>' : '';
   }
 
   function botonCantidad(p) {
@@ -1287,7 +1287,7 @@
       '<div class="lineas">' + lineas.map((l) => '<div class="linea"><span>' + l.n + ' × ' + esc(l.p.nombre) + '</span><b>' + esc(S.precioTexto(l.p.precio * l.n, l.p.moneda)) + '</b></div>').join('') +
       '<div class="linea total"><span>Total</span><b>' + esc(total) + '</b></div></div>' +
       '<div class="campo"><label for="pedido-nombre">Tu nombre</label><input id="pedido-nombre" data-accion="pedido-nombre" value="' + esc(c.nombre || '') + '" autocomplete="name"></div>',
-      '<a class="btn btn-wa btn-ancho" id="enviar-pedido" href="' + esc(link) + '" target="_blank" rel="noopener">Enviar pedido por WhatsApp</a>' +
+      '<a class="btn btn-wa btn-ancho btn-con-icono" id="enviar-pedido" href="' + esc(link) + '" target="_blank" rel="noopener">' + ICONO_WA + 'Enviar pedido por WhatsApp</a>' +
       (ajustes.whatsapp ? '' : '<p class="nota">El negocio todavía no cargó su WhatsApp en Ajustes: vas a poder elegir a quién mandarlo.</p>')];
   }
 
