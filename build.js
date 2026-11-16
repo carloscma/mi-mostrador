@@ -1,4 +1,5 @@
-// Arma la carpeta dist/ lista para subir a internet (Netlify u otro).
+// Arma la carpeta dist/ lista para subir a internet (Cloudflare Pages).
+// La carpeta functions/ (vista previa de los links) la toma Cloudflare directo, no va en dist.
 // index.html queda con el CSS y el JS adentro; se copian manifest, sw e íconos.
 // Uso: node build.js
 const fs = require('fs');
@@ -12,5 +13,5 @@ fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(path.join(dist, 'iconos'), { recursive: true });
 fs.mkdirSync(path.join(dist, 'modelo'), { recursive: true });
 fs.writeFileSync(path.join(dist, 'index.html'), html);
-['manifest.webmanifest', 'sw.js', 'iconos/icono-192.png', 'iconos/icono-512.png', 'modelo/recorte.json'].forEach((a) => fs.copyFileSync(path.join(raiz, a), path.join(dist, a)));
+['manifest.webmanifest', 'sw.js', 'iconos/icono-192.png', 'iconos/icono-512.png', 'modelo/recorte.json', 'og.jpg'].forEach((a) => fs.copyFileSync(path.join(raiz, a), path.join(dist, a)));
 console.log('Listo: carpeta dist/ (' + Math.round(html.length / 1024) + ' KB)');
