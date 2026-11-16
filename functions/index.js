@@ -27,8 +27,16 @@ function etiquetas(d, pagina, supabase) {
   const nombre = (d.negocio.nombre || 'Catálogo').trim();
   const prods = d.productos || [];
   const n = prods.length;
-  const conFoto = prods.find((p) => p.datos && (p.datos.mini || p.datos.foto));
-  const foto = conFoto ? (supabase || SUPABASE) + '/storage/v1/object/public/fotos/' + (conFoto.datos.mini || conFoto.datos.foto) : null;
+  // Imagen: el logo del negocio; si no cargó logo, la foto de su producto más nuevo
+  let foto = null;
+  const logo = d.negocio.logo;
+  if (typeof logo === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(logo)) {
+    const u = new URL(pagina);
+    foto = u.origin + '/logo?c=' + encodeURIComponent(u.searchParams.get('c')) + '&k=' + logo.length;
+  } else {
+    const conFoto = prods.find((p) => p.datos && (p.datos.mini || p.datos.foto));
+    if (conFoto) foto = (supabase || SUPABASE) + '/storage/v1/object/public/fotos/' + (conFoto.datos.mini || conFoto.datos.foto);
+  }
   const titulo = nombre + ' · Catálogo';
   const desc = n
     ? n + (n === 1 ? ' producto' : ' productos') + ' con foto y precio. Elegí lo que te guste y hacé tu pedido por WhatsApp.'
